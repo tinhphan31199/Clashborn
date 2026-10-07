@@ -5,7 +5,7 @@
  *  Phân vai worker theo Nhu cầu (needs) của War Council mỗi tick.
  */
 import { BUILDING_DEFS, TILE, UNIT_DEFS } from "../data";
-import { T_FIELD, T_GRASS, T_STONE, T_WATER, T_WOOD } from "../TileMap";
+import { RICE_RIPE_AT, T_FIELD, T_GRASS, T_STONE, T_WATER, T_WOOD } from "../TileMap";
 import { findPath } from "../astar";
 import { Entity, NeedWeights, WorkerJob } from "../types";
 import { World } from "../World";
@@ -65,9 +65,14 @@ export function economyTick(world: World, dt: number) {
   incomeTick(world, dt);
 }
 
-/** Lúa mọc lại: ruộng đã gặt hồi dần tới trần — khác rừng/đá hết là hết. */
-const REGROW_RATE = 1.2;
-const REGROW_CAP = 60;
+/** Lúa mọc lại: ruộng đã gặt hồi dần tới trần — khác rừng/đá hết là hết.
+ *  Lúa CHÍN VÀNG (rice >= ngưỡng chín) mới gặt được, còn xanh thì chờ. */
+export const REGROW_RATE = 1.2;
+export const REGROW_CAP = 60;
+/** Ô ruộng này đã chín chưa? */
+export function isRipe(rice: number): boolean {
+  return rice >= RICE_RIPE_AT;
+}
 function regrowTick(world: World, dt: number) {
   const { map } = world;
   for (let i = 0; i < map.tiles.length; i++) {
@@ -336,6 +341,10 @@ function gatherAt(world: World, u: Entity, res: WorkerJob, dt: number) {
       sendToSource(world, u, res);
       return;
     }
+    if (res === "food" && !isRipe(store[world.map.idx(tx, ty)])) {
+      sendToSource(world, u, res); // lúa xanh chưa gặt được → tìm đám chín
+      return;
+    }
     const i = world.map.idx(tx, ty);
     const take = Math.min(TAKE, store[i], CARRY_CAP - u.carry);
     store[i] -= take;
@@ -370,6 +379,7 @@ function sourceLeft(world: World, u: Entity, res: WorkerJob): boolean {
   const store = res === "wood" ? world.map.wood : res === "stone" ? world.map.stone : world.map.rice;
   if (world.map.tileAt(u.targetX, u.targetY) !== kind) return false;
   if (store[world.map.idx(u.targetX, u.targetY)] <= 0) return false;
+  if (res === "food" && !isRipe(store[world.map.idx(u.targetX, u.targetY)])) return false;
   // Phải đứng ở ô kề bên (không bao giờ đứng trong ô tài nguyên).
   const dx = Math.abs(world.map.worldToTile(u.x) - u.targetX);
   const dy = Math.abs(world.map.worldToTile(u.y) - u.targetY);

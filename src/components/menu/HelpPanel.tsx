@@ -59,7 +59,7 @@ export default function HelpPanel({ onBack, inGame }: { onBack: () => void; inGa
           <ul className="mb-3 list-disc pl-5 text-sm leading-6 text-zinc-300">
             <li><b>💎 Mỏ vàng:</b> worker đứng trong vòng chiếm → +5 gần / +10 giữa / +20 trung tâm mỗi giây. Base cho +2/s nền.</li>
             <li><b>🪵 Gỗ / 🪨 Đá:</b> worker đốn rồi gánh về base. Archer cần gỗ, Tank cần gỗ + đá.</li>
-            <li><b>🌾 Ruộng lúa:</b> worker gặt lúa gánh về — lính ăn lúa khi train. Ruộng gặt sạch <b>tự mọc lại</b>, rừng/đá thì không.</li>
+            <li><b>🌾 Ruộng lúa:</b> worker gặt lúa gánh về — lính ăn lúa khi train. Chỉ gặt đám <b>chín vàng</b>, lúa xanh phải chờ. Ruộng gặt sạch <b>tự mọc lại</b>, rừng/đá thì không.</li>
             <li><b>💧 Nước:</b> node/base ra nước, quân uống mỗi giây (tank khát nhất). Hết nước cả phe <b>yếu 30%</b>.</li>
             <li><b>👥 Population 20:</b> Tank chiếm 3 slot — đừng spam.</li>
           </ul>

@@ -16,6 +16,8 @@ export const T_ORE = 2;
 export const T_WOOD = 3;
 export const T_STONE = 4;
 export const T_FIELD = 5;
+/** Lúa trên ô ruộng đạt mức này mới CHÍN VÀNG, gặt được. */
+export const RICE_RIPE_AT = 40;
 
 export class TileMap {
   w: number;
@@ -195,6 +197,7 @@ export class TileMap {
         if (exclude && x === exclude.tx && y === exclude.ty) continue;
         const left = store[i];
         if (left <= 0) continue;
+        if (kind === T_FIELD && left < RICE_RIPE_AT) continue; // lúa xanh chưa gặt được
         // ô đứng: cỏ kề bên gần worker nhất
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {

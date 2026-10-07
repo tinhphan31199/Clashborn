@@ -3,7 +3,7 @@
  * Vẽ base 🏰, node 💎 (vòng chủ + income), lính bằng icon + vòng team.
  */
 import { BUILDING_DEFS, TILE, UNIT_DEFS } from "./data";
-import { T_FIELD, T_GRASS, T_ORE, T_STONE, T_WATER, T_WOOD } from "./TileMap";
+import { RICE_RIPE_AT, T_FIELD, T_GRASS, T_ORE, T_STONE, T_WATER, T_WOOD } from "./TileMap";
 import { fieldArt, unitFrames } from "./assets";
 import { Game, HUMAN } from "./Game";
 import { Interaction } from "./input";
@@ -105,12 +105,18 @@ export function renderGame(
         ctx.fill();
       } else if (t === T_FIELD) {
         // Ruộng lúa: sprite PixelLab, chưa tải xong thì vẽ luống fallback.
-        // Mạ thưa dần theo trữ lượng còn lại (gặt sạch trơ bùn, chờ mọc lại).
+        // Xanh = lúa non (chưa gặt được) · vàng óng = lúa chín (gặt được).
+        const amt = map.rice[map.idx(tx, ty)];
+        const ripe = amt >= RICE_RIPE_AT;
         if (art.field) {
           ctx.drawImage(art.field, px, py, TILE, TILE);
-          const amt = map.rice[map.idx(tx, ty)];
-          if (amt < 30) {
-            ctx.fillStyle = `rgba(122,92,46,${Math.min(0.7, (30 - amt) / 30)})`;
+          if (!ripe) {
+            // Phủ xanh theo độ non (càng non càng xanh đậm).
+            ctx.fillStyle = `rgba(46,125,50,${Math.min(0.55, (RICE_RIPE_AT - amt) / RICE_RIPE_AT)})`;
+            ctx.fillRect(px, py, TILE, TILE);
+          } else {
+            // Chín: ánh vàng nhẹ cho nhận ra từ xa.
+            ctx.fillStyle = "rgba(232,195,58,0.18)";
             ctx.fillRect(px, py, TILE, TILE);
           }
         } else {
@@ -120,7 +126,7 @@ export function renderGame(
           ctx.fillRect(px, py + 10, TILE, 3);
           ctx.fillRect(px, py + 22, TILE, 3);
           const amt = map.rice[map.idx(tx, ty)];
-          ctx.fillStyle = amt > 30 ? "#6fa843" : "#4a6b2f";
+          ctx.fillStyle = amt >= RICE_RIPE_AT ? "#c9a227" : "#4a6b2f";
           for (let sx = 4; sx < TILE && amt > 0; sx += 8) {
             ctx.fillRect(px + sx, py + 6, 3, 6);
             ctx.fillRect(px + sx, py + 18, 3, 6);

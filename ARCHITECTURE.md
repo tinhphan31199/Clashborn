@@ -80,6 +80,7 @@ AI đỏ chơi đúng luật: nhận doctrine theo tính cách rồi đánh như
 Cụm ruộng gần base + giữa map. Worker gặt lúa gánh về kho (tối đa 200),
 lính ăn lúa khi train (soldier/archer 10 · tank 30).
 Ruộng gặt sạch **tự mọc lại** 1.2/s — rừng/đá hết là hết vĩnh viễn.
+Chỉ đám **chín vàng** (≥40 lúa) mới gặt được, lúa xanh worker tự bỏ qua (ruộng non phủ xanh, chín ánh vàng).
 
 ## 💧 Nước (tài nguyên sinh tồn)
 
