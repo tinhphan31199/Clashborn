@@ -133,6 +133,7 @@ export default function MainMenu({
               const cost = [`💰${d.cost}`];
               if (d.wood) cost.push(`🪵${d.wood}`);
               if (d.stone) cost.push(`🪨${d.stone}`);
+              if (d.food) cost.push(`🌾${d.food}`);
               return (
                 <div key={id} className="rounded-lg border border-zinc-800 bg-zinc-800/50 p-2.5 text-xs">
                   <div className="text-sm font-bold">

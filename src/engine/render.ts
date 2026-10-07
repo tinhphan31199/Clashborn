@@ -3,7 +3,7 @@
  * Vẽ base 🏰, node 💎 (vòng chủ + income), lính bằng icon + vòng team.
  */
 import { BUILDING_DEFS, TILE, UNIT_DEFS } from "./data";
-import { T_GRASS, T_ORE, T_STONE, T_WATER, T_WOOD } from "./TileMap";
+import { T_FIELD, T_GRASS, T_ORE, T_STONE, T_WATER, T_WOOD } from "./TileMap";
 import { fieldArt, unitFrames } from "./assets";
 import { Game, HUMAN } from "./Game";
 import { Interaction } from "./input";
@@ -103,6 +103,29 @@ export function renderGame(
         ctx.lineTo(px + 22 + ox * 0.5, py + 22);
         ctx.closePath();
         ctx.fill();
+      } else if (t === T_FIELD) {
+        // Ruộng lúa: sprite PixelLab, chưa tải xong thì vẽ luống fallback.
+        // Mạ thưa dần theo trữ lượng còn lại (gặt sạch trơ bùn, chờ mọc lại).
+        if (art.field) {
+          ctx.drawImage(art.field, px, py, TILE, TILE);
+          const amt = map.rice[map.idx(tx, ty)];
+          if (amt < 30) {
+            ctx.fillStyle = `rgba(122,92,46,${Math.min(0.7, (30 - amt) / 30)})`;
+            ctx.fillRect(px, py, TILE, TILE);
+          }
+        } else {
+          ctx.fillStyle = "#7a5c2e";
+          ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillStyle = "#6b8f67";
+          ctx.fillRect(px, py + 10, TILE, 3);
+          ctx.fillRect(px, py + 22, TILE, 3);
+          const amt = map.rice[map.idx(tx, ty)];
+          ctx.fillStyle = amt > 30 ? "#6fa843" : "#4a6b2f";
+          for (let sx = 4; sx < TILE && amt > 0; sx += 8) {
+            ctx.fillRect(px + sx, py + 6, 3, 6);
+            ctx.fillRect(px + sx, py + 18, 3, 6);
+          }
+        }
       } else {
         if (art.grass) {
           ctx.drawImage(art.grass, px, py, TILE, TILE);
@@ -273,7 +296,7 @@ function drawUnit(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
   // worker đang gánh thì vẽ bao trên lưng
   const showCarry = e.kind === "unit" && e.defId === "worker" && e.carry > 0;
   if (showCarry) {
-    ctx.fillStyle = e.carryType === "wood" ? "#4ade80" : e.carryType === "stone" ? "#a8a29e" : "#38bdf8";
+    ctx.fillStyle = e.carryType === "wood" ? "#4ade80" : e.carryType === "stone" ? "#a8a29e" : e.carryType === "food" ? "#fbbf24" : "#38bdf8";
     ctx.fillRect(e.x - 6, e.y - (UNIT_DEFS[e.defId]?.radius ?? 9) - 10, 12, 4);
   }
   if (e.vetLevel > 0) {
@@ -362,6 +385,7 @@ export function renderMinimap(
         const t = map.tiles[map.idx(tx, ty)];
         if (t === T_WOOD) ctx.fillStyle = "#2d5a27";
         else if (t === T_STONE) ctx.fillStyle = "#6b6b6b";
+        else if (t === T_FIELD) ctx.fillStyle = "#8a7a3a";
         else ctx.fillStyle = "#2c5a2a";
       }
       ctx.fillRect(tx * s, ty * s, Math.ceil(s), Math.ceil(s));

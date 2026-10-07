@@ -7,7 +7,7 @@ Game 1v1 "vị tướng đứng sau": người chơi **không micro lính**, ch�
 START → spawn Worker → Gold → spawn quân → tranh mỏ → giao chiến → push Base → WIN
 ```
 
-## Map 96×96 đối xứng — 4 tài nguyên
+## Map 96×96 đối xứng — 5 tài nguyên
 
 ```
         BLUE 🏰                    Vàng: 5 node (thuế đất, chiếm bằng worker)
@@ -21,10 +21,10 @@ START → spawn Worker → Gold → spawn quân → tranh mỏ → giao chiến 
 
 | Unit | Giá | Vai trò |
 |---|---|---|
-| 👷 Worker | 30 vàng | Giữ mỏ vàng / đốn gỗ / đào đá / gánh nước (phân vai theo nút Cần) |
-| ⚔️ Soldier | 50 vàng | Săn Worker địch |
-| 🏹 Archer | 50 vàng + 25 gỗ | Rỉa xa |
-| 🛡️ Tank | 100 vàng + 50 gỗ + 25 đá | Khiên thịt, pop 3 |
+| 👷 Worker | 30 vàng | Giữ mỏ vàng / đốn gỗ / đào đá / gánh nước / gặt lúa (phân vai theo nút Cần) |
+| ⚔️ Soldier | 50 vàng + 10 lúa | Săn Worker địch |
+| 🏹 Archer | 50 vàng + 25 gỗ + 10 lúa | Rỉa xa |
+| 🛡️ Tank | 100 vàng + 50 gỗ + 25 đá + 30 lúa | Khiên thịt, pop 3 |
 
 Population cap 20. Base 🏰 2000 HP (có pháo tự vệ). Phá base địch → thắng.
 
@@ -71,9 +71,15 @@ game.dispatch({ type: "setDirective", player: 0, ecoMil: 0.3, defAtk: 0.8, focus
 | Học thuyết 1 chạm | ⚔️ Rush (công+tâm) · 🛡️ Turtle (kinh tế+gần) · ⚖️ Control (giữa) |
 | 🤖 Auto-chi tiêu | Gold tự mua lính theo slider, 2s một nhịp |
 | ⚠️ Needs | HUD báo: base bị đánh / hết nước / thiếu vàng-gỗ-đá / pop đầy |
-| **Cần 💰🪵🪨💧** | Nút 3 mức (thôi/thường/gấp) — worker tự dồn sang tài nguyên cần |
+| **Cần 💰🪵🪨💧🌾** | Nút 3 mức (thôi/thường/gấp) — worker tự dồn sang tài nguyên cần |
 
 AI đỏ chơi đúng luật: nhận doctrine theo tính cách rồi đánh như người.
+
+## 🌾 Ruộng lúa (vựa lúa — tài nguyên tái sinh duy nhất)
+
+Cụm ruộng gần base + giữa map. Worker gặt lúa gánh về kho (tối đa 200),
+lính ăn lúa khi train (soldier/archer 10 · tank 30).
+Ruộng gặt sạch **tự mọc lại** 1.2/s — rừng/đá hết là hết vĩnh viễn.
 
 ## 💧 Nước (tài nguyên sinh tồn)
 

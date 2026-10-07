@@ -4,8 +4,9 @@
  *  0 = cỏ (đi được)
  *  1 = nước/hồ (không đi được — lấy nước ở ô bờ kề bên)
  *  2 = ore (giữ tương thích save cũ, không dùng)
- *  3 = rừng 🌲 (đi được, đốn gỗ, có trữ lượng)
- *  4 = đá 🪨 (đi được, khai thác, có trữ lượng)
+ *  3 = rừng 🌲 (cấm đi, đốn gỗ, có trữ lượng)
+ *  4 = đá 🪨 (cấm đi, khai thác, có trữ lượng)
+ *  5 = ruộng 🌾 (cấm đi, gặt lúa — lúa tự mọc lại)
  */
 import { TILE } from "./data";
 
@@ -14,6 +15,7 @@ export const T_WATER = 1;
 export const T_ORE = 2;
 export const T_WOOD = 3;
 export const T_STONE = 4;
+export const T_FIELD = 5;
 
 export class TileMap {
   w: number;
@@ -22,9 +24,10 @@ export class TileMap {
   tiles: Uint8Array;
   /** ore amount per tile (only meaningful where tiles == T_ORE) */
   ore: Float32Array;
-  /** trữ lượng gỗ / đá mỗi tile */
+  /** trữ lượng gỗ / đá / lúa mỗi tile */
   wood: Float32Array;
   stone: Float32Array;
+  rice: Float32Array;
   /** blocked by buildings per tile */
   blocked: Uint8Array;
 
@@ -35,6 +38,7 @@ export class TileMap {
     this.ore = new Float32Array(w * h);
     this.wood = new Float32Array(w * h);
     this.stone = new Float32Array(w * h);
+    this.rice = new Float32Array(w * h);
     this.blocked = new Uint8Array(w * h);
   }
 
@@ -60,7 +64,7 @@ export class TileMap {
     if (!this.inBounds(tx, ty)) return false;
     const i = this.idx(tx, ty);
     const t = this.tiles[i];
-    return t !== T_WATER && t !== T_WOOD && t !== T_STONE && this.blocked[i] === 0;
+    return t !== T_WATER && t !== T_WOOD && t !== T_STONE && t !== T_FIELD && this.blocked[i] === 0;
   }
 
   worldToTile(wx: number): number {
@@ -86,6 +90,7 @@ export class TileMap {
         if (this.tiles[i] !== T_WATER) this.tiles[i] = T_GRASS;
         this.wood[i] = 0;
         this.stone[i] = 0;
+        this.rice[i] = 0;
       }
     }
   }
@@ -136,6 +141,22 @@ export class TileMap {
     }
   }
 
+  /** Rải ruộng lúa (đối xứng đã mirror ở ngoài). Lúa tự mọc lại nên amount là trần. */
+  scatterField(rand: () => number, cx: number, cy: number, radius: number, amount: number) {
+    for (let y = Math.floor(cy - radius); y <= cy + radius; y++) {
+      for (let x = Math.floor(cx - radius); x <= cx + radius; x++) {
+        if (!this.inBounds(x, y)) continue;
+        const d = Math.hypot(x - cx, y - cy);
+        if (d <= radius && rand() > d / (radius + 1) - 0.15) {
+          const i = this.idx(x, y);
+          if (this.tiles[i] === T_GRASS) {
+            this.tiles[i] = T_FIELD;
+            this.rice[i] = amount * (0.7 + rand() * 0.6);
+          }
+        }
+      }
+    }
+  }
   /** Giữ tương thích (không còn dùng ore). */
   scatterOre(
     rand: () => number,
@@ -153,32 +174,8 @@ export class TileMap {
     return null;
   }
 
-  /** Ô rừng/đá gần nhất còn trữ lượng (tile đơn vị). */
-  nearestHarvest(
-    wx: number, wy: number, kind: number, maxTiles = 48
-  ): { tx: number; ty: number } | null {
-    const stx = this.worldToTile(wx);
-    const sty = this.worldToTile(wy);
-    let best: { tx: number; ty: number } | null = null;
-    let bestD = maxTiles * maxTiles;
-    for (let y = Math.max(0, sty - maxTiles); y <= Math.min(this.h - 1, sty + maxTiles); y++) {
-      for (let x = Math.max(0, stx - maxTiles); x <= Math.min(this.w - 1, stx + maxTiles); x++) {
-        const i = this.idx(x, y);
-        if (this.tiles[i] !== kind) continue;
-        const left = kind === T_WOOD ? this.wood[i] : this.stone[i];
-        if (left <= 0) continue;
-        const d = (x - stx) * (x - stx) + (y - sty) * (y - sty);
-        if (d < bestD) {
-          bestD = d;
-          best = { tx: x, ty: y };
-        }
-      }
-    }
-    return best;
-  }
-
   /**
-   * Chỗ đứng khai thác rừng/đá: ô cỏ ĐI ĐƯỢC kề ô tài nguyên còn hàng gần nhất.
+   * Chỗ đứng khai thác rừng/đá/ruộng: ô cỏ ĐI ĐƯỢC kề ô tài nguyên còn hàng gần nhất.
    * Trả về {ô đứng} + {ô tài nguyên}. Worker không bao giờ bước vào ô tài nguyên.
    * exclude: bỏ qua 1 ô tài nguyên (khi đường tới đó bị kẹt) để thử chỗ khác.
    */
@@ -188,6 +185,7 @@ export class TileMap {
   ): { tx: number; ty: number; rtx: number; rty: number } | null {
     const stx = this.worldToTile(wx);
     const sty = this.worldToTile(wy);
+    const store = kind === T_WOOD ? this.wood : kind === T_STONE ? this.stone : this.rice;
     let best: { tx: number; ty: number; rtx: number; rty: number } | null = null;
     let bestD = maxTiles * maxTiles;
     for (let y = Math.max(0, sty - maxTiles); y <= Math.min(this.h - 1, sty + maxTiles); y++) {
@@ -195,7 +193,7 @@ export class TileMap {
         const i = this.idx(x, y);
         if (this.tiles[i] !== kind) continue;
         if (exclude && x === exclude.tx && y === exclude.ty) continue;
-        const left = kind === T_WOOD ? this.wood[i] : this.stone[i];
+        const left = store[i];
         if (left <= 0) continue;
         // ô đứng: cỏ kề bên gần worker nhất
         for (let dy = -1; dy <= 1; dy++) {

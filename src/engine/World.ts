@@ -60,7 +60,8 @@ export class World {
       ecoMil: 0.5, defAtk: 0.5, focus: "auto", autoSpend: false,
       water: 25, waterIncome: 0,
       wood: 40, stone: 20,
-      needs: { gold: 1, wood: 1, stone: 1, water: 1 },
+      food: 60,
+      needs: { gold: 1, wood: 1, stone: 1, water: 1, food: 1 },
     });
     this.fog[id] = new Uint8Array(MAP_W * MAP_H);
   }
@@ -120,6 +121,15 @@ export class World {
       map.scatterStone(rand, cx, cy, r, 100);
       const [mx, my] = mirror(cx, cy);
       map.scatterStone(rand, mx, my, r, 100);
+    }
+    // Ruộng lúa: gần base mỗi bên (dễ nuôi quân đầu game) + 1 cặp giữa map.
+    const fields: [number, number, number][] = [
+      [20, 14, 5], [14, 30, 4], [36, 34, 4],
+    ];
+    for (const [cx, cy, r] of fields) {
+      map.scatterField(rand, cx, cy, r, 100);
+      const [mx, my] = mirror(cx, cy);
+      map.scatterField(rand, mx, my, r, 100);
     }
     // Đảm bảo thông đường: base xanh tới được base đỏ + 5 node + tâm.
     // Thiếu là phạt: lính không bao giờ kẹt bên kia tường cây/đá.
@@ -540,6 +550,7 @@ export class World {
         ore: Array.from(this.map.ore),
         wood: Array.from(this.map.wood),
         stone: Array.from(this.map.stone),
+        rice: Array.from(this.map.rice),
         blocked: Array.from(this.map.blocked),
       },
     });
@@ -562,6 +573,7 @@ export class World {
       w.map.ore.set(d.map.ore);
       if (d.map.wood) w.map.wood.set(d.map.wood);
       if (d.map.stone) w.map.stone.set(d.map.stone);
+      if (d.map.rice) w.map.rice.set(d.map.rice);
       w.map.blocked.set(d.map.blocked);
     }
     w.rebuildSpatial();

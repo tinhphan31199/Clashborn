@@ -68,10 +68,10 @@ export class AIController {
       // AI chơi đúng luật: ra doctrine qua lệnh như người.
       const d =
         this.personality === "rush"
-          ? { ecoMil: 0.8, defAtk: 0.9, focus: "center" as const, needs: { gold: 2, wood: 1, stone: 0, water: 1 } }
+          ? { ecoMil: 0.8, defAtk: 0.9, focus: "center" as const, needs: { gold: 2, wood: 1, stone: 0, water: 1, food: 1 } }
           : this.personality === "eco"
-            ? { ecoMil: 0.25, defAtk: 0.3, focus: "near" as const, needs: { gold: 2, wood: 2, stone: 1, water: 1 } }
-            : { ecoMil: 0.5, defAtk: 0.5, focus: "mid" as const, needs: { gold: 1, wood: 1, stone: 1, water: 2 } };
+            ? { ecoMil: 0.25, defAtk: 0.3, focus: "near" as const, needs: { gold: 2, wood: 2, stone: 1, water: 1, food: 2 } }
+            : { ecoMil: 0.5, defAtk: 0.5, focus: "mid" as const, needs: { gold: 1, wood: 1, stone: 1, water: 2, food: 1 } };
       dispatch({ type: "setDirective", player: me, ...d });
     }
 
@@ -88,7 +88,7 @@ export class AIController {
       const pl = world.player(me);
       const def = UNIT_DEFS[id];
       if (!def) return false;
-      if (pl.ore < def.cost || (pl.wood ?? 0) < (def.wood ?? 0) || (pl.stone ?? 0) < (def.stone ?? 0)) return false;
+      if (pl.ore < def.cost || (pl.wood ?? 0) < (def.wood ?? 0) || (pl.stone ?? 0) < (def.stone ?? 0) || (pl.food ?? 0) < (def.food ?? 0)) return false;
       if (pl.supplyUsed + def.supply > pl.supplyCap) return false;
       dispatch({ type: "spawnUnit", player: me, unitDefId: id });
       return true;

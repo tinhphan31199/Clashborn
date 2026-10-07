@@ -5,12 +5,53 @@
  *  Phân vai worker theo Nhu cầu (needs) của War Council mỗi tick.
  */
 import { BUILDING_DEFS, TILE, UNIT_DEFS } from "../data";
-import { T_GRASS, T_STONE, T_WATER, T_WOOD } from "../TileMap";
+import { T_FIELD, T_GRASS, T_STONE, T_WATER, T_WOOD } from "../TileMap";
 import { findPath } from "../astar";
-import { Entity, WorkerJob } from "../types";
+import { Entity, NeedWeights, WorkerJob } from "../types";
 import { World } from "../World";
 
 export const WATER_CAP = 40;
+/** Kho lúa tối đa. Lính ăn lúa khi train (soldier 10 · tank 30). */
+export const FOOD_CAP = 200;
+/** Ngưỡng kho cạn → worker TỰ đi lấy dù tướng không ra lệnh. */
+export const SHORTAGE_WOOD = 30; // dưới 1 con archer
+export const SHORTAGE_STONE = 15; // sắp không đủ 1 con tank
+export const SHORTAGE_WATER = 12;
+export const SHORTAGE_FOOD = 20; // không đủ train 2 soldier
+
+/** Dấu hiệu thiếu tài nguyên (dùng cho auto-gather + cảnh báo HUD). */
+export function shortages(pl: { wood: number; stone: number; water: number; waterIncome: number; food: number }): {
+  wood: boolean;
+  stone: boolean;
+  water: boolean;
+  food: boolean;
+} {
+  return {
+    wood: pl.wood < SHORTAGE_WOOD,
+    stone: (pl.stone ?? 0) < SHORTAGE_STONE,
+    water: pl.water < SHORTAGE_WATER || (pl.waterIncome < -1 && pl.water < 20),
+    food: (pl.food ?? 0) < SHORTAGE_FOOD,
+  };
+}
+
+/** Nhu cầu hiệu lực = tay tướng chỉnh + máy tự bù khi kho cạn. */
+export function effectiveNeeds(pl: {
+  needs: NeedWeights;
+  wood: number;
+  stone: number;
+  water: number;
+  waterIncome: number;
+  food: number;
+}): NeedWeights {
+  const s = shortages(pl);
+  return {
+    gold: pl.needs.gold,
+    wood: Math.max(pl.needs.wood, s.wood ? 2 : 0),
+    stone: Math.max(pl.needs.stone, s.stone ? 2 : 0),
+    water: Math.max(pl.needs.water, s.water ? 2 : 0),
+    food: Math.max(pl.needs.food, s.food ? 2 : 0),
+  };
+}
 /** mỗi nhịp gánh / sức gánh */
 const TAKE = 5;
 const CARRY_CAP = 25;
@@ -20,31 +61,44 @@ export function economyTick(world: World, dt: number) {
   rolesTick(world);
   captureTick(world);
   tripsTick(world, dt);
+  regrowTick(world, dt);
   incomeTick(world, dt);
+}
+
+/** Lúa mọc lại: ruộng đã gặt hồi dần tới trần — khác rừng/đá hết là hết. */
+const REGROW_RATE = 1.2;
+const REGROW_CAP = 60;
+function regrowTick(world: World, dt: number) {
+  const { map } = world;
+  for (let i = 0; i < map.tiles.length; i++) {
+    if (map.tiles[i] !== T_FIELD) continue;
+    if (map.rice[i] < REGROW_CAP) map.rice[i] = Math.min(REGROW_CAP, map.rice[i] + REGROW_RATE * dt);
+  }
 }
 
 // ---------------------------------------------------------- phân vai
 
-/** Chia worker: giữ mỏ vàng + gánh gỗ/đá/nước theo needs. */
+/** Chia worker: giữ mỏ vàng + gánh gỗ/đá/nước theo needs (tay chỉnh + máy tự bù khi cạn). */
 function rolesTick(world: World) {
   for (const pl of world.players) {
     if (!pl.alive) continue;
     const workers = world.unitsOf(pl.id).filter((u) => u.defId === "worker");
     if (workers.length === 0) continue;
 
-    const nodeTarget = pl.needs.gold === 0 ? 1 : pl.needs.gold === 2 ? 4 : 2;
+    const needs = effectiveNeeds(pl);
+    const nodeTarget = needs.gold === 0 ? 1 : needs.gold === 2 ? 4 : 2;
     const slots = Math.max(0, workers.length - nodeTarget);
-    const wts = [pl.needs.wood, pl.needs.stone, pl.needs.water];
-    const sum = wts[0] + wts[1] + wts[2];
-    const jobs: WorkerJob[] = ["wood", "stone", "water"];
-    const desired: Record<WorkerJob, number> = { node: 0, wood: 0, stone: 0, water: 0 };
+    const wts = [needs.wood, needs.stone, needs.water, needs.food];
+    const sum = wts[0] + wts[1] + wts[2] + wts[3];
+    const jobs: WorkerJob[] = ["wood", "stone", "water", "food"];
+    const desired: Record<WorkerJob, number> = { node: 0, wood: 0, stone: 0, water: 0, food: 0 };
     desired.node = Math.min(nodeTarget, workers.length);
     if (sum === 0) {
       // Không cần gì → tất cả giữ mỏ cho có việc.
       desired.node = workers.length;
     } else {
       let assigned = 0;
-      const order = [0, 1, 2].sort((a, b) => wts[b] - wts[a]);
+      const order = [0, 1, 2, 3].sort((a, b) => wts[b] - wts[a]);
       for (const i of order) {
         const c = Math.floor((slots * wts[i]) / sum);
         desired[jobs[i]] = c;
@@ -52,22 +106,22 @@ function rolesTick(world: World) {
       }
       // phần lẻ cho việc cần nhất
       let k = 0;
-      while (assigned < slots && k < 3) {
+      while (assigned < slots && k < 4) {
         desired[jobs[order[k % 3]]]++;
         assigned++;
         k++;
       }
     }
 
-    const count: Record<WorkerJob, number> = { node: 0, wood: 0, stone: 0, water: 0 };
+    const count: Record<WorkerJob, number> = { node: 0, wood: 0, stone: 0, water: 0, food: 0 };
     for (const u of workers) count[u.job]++;
 
     // Chuyển những worker rảnh (không gánh, không chạy giặc) sang việc thiếu.
     // Chuyển những worker rảnh sang việc thiếu.
     // Đang đi/gánh thì không giật (kẻo cuốc xa mãi không tới).
     // Chỉ tỉa khi vai hiện tại thừa người.
-    const over: Record<WorkerJob, boolean> = { node: false, wood: false, stone: false, water: false };
-    for (const j of ["node", "wood", "stone", "water"] as WorkerJob[]) {
+    const over: Record<WorkerJob, boolean> = { node: false, wood: false, stone: false, water: false, food: false };
+    for (const j of ["node", "wood", "stone", "water", "food"] as WorkerJob[]) {
       over[j] = count[j] > desired[j];
     }
     for (const u of workers) {
@@ -76,7 +130,7 @@ function rolesTick(world: World) {
       // tìm việc đang thiếu nhất
       let want: WorkerJob | null = null;
       let bestGap = 0;
-      for (const j of ["node", "wood", "stone", "water"] as WorkerJob[]) {
+      for (const j of ["node", "wood", "stone", "water", "food"] as WorkerJob[]) {
         const gap = desired[j] - count[j];
         if (gap > bestGap) {
           bestGap = gap;
@@ -240,6 +294,7 @@ function deposit(world: World, u: Entity, res: WorkerJob) {
   if (u.carryType === "wood") pl.wood += Math.floor(u.carry);
   else if (u.carryType === "stone") pl.stone += Math.floor(u.carry);
   else if (u.carryType === "water") pl.water = Math.min(WATER_CAP, pl.water + u.carry);
+  else if (u.carryType === "food") pl.food = Math.min(FOOD_CAP, pl.food + Math.floor(u.carry));
   u.carry = 0;
   u.state = "idle";
   u.path = [];
@@ -275,8 +330,8 @@ function gatherAt(world: World, u: Entity, res: WorkerJob, dt: number) {
       sendToSource(world, u, res);
       return;
     }
-    const kind = res === "wood" ? T_WOOD : T_STONE;
-    const store = res === "wood" ? world.map.wood : world.map.stone;
+    const kind = res === "wood" ? T_WOOD : res === "stone" ? T_STONE : T_FIELD;
+    const store = res === "wood" ? world.map.wood : res === "stone" ? world.map.stone : world.map.rice;
     if (world.map.tileAt(tx, ty) !== kind || store[world.map.idx(tx, ty)] <= 0) {
       sendToSource(world, u, res);
       return;
@@ -286,12 +341,18 @@ function gatherAt(world: World, u: Entity, res: WorkerJob, dt: number) {
     store[i] -= take;
     u.carry += take;
     u.carryType = res;
-    if (store[i] <= 0) world.map.tiles[i] = T_GRASS; // đốn sạch → cỏ
+    if (store[i] <= 0) {
+      if (res === "food") {
+        // Ruộng gặt sạch vẫn là ruộng — lúa mọc lại sau (xem regrowTick).
+      } else {
+        world.map.tiles[i] = T_GRASS; // đốn sạch → cỏ
+      }
+    }
   }
   world.addEffect({
     kind: "spark", x1: u.x, y1: u.y, x2: u.x, y2: u.y,
     ttl: 0.3, maxTtl: 0.3,
-    color: res === "wood" ? "#4ade80" : res === "stone" ? "#a8a29e" : "#38bdf8",
+    color: res === "wood" ? "#4ade80" : res === "stone" ? "#a8a29e" : res === "food" ? "#fbbf24" : "#38bdf8",
   });
   if (u.carry >= CARRY_CAP) {
     const base = world.baseOf(u.player);
@@ -305,8 +366,8 @@ function gatherAt(world: World, u: Entity, res: WorkerJob, dt: number) {
 
 function sourceLeft(world: World, u: Entity, res: WorkerJob): boolean {
   if (res === "water") return world.map.tileAt(u.targetX, u.targetY) === T_WATER;
-  const kind = res === "wood" ? T_WOOD : T_STONE;
-  const store = res === "wood" ? world.map.wood : world.map.stone;
+  const kind = res === "wood" ? T_WOOD : res === "stone" ? T_STONE : T_FIELD;
+  const store = res === "wood" ? world.map.wood : res === "stone" ? world.map.stone : world.map.rice;
   if (world.map.tileAt(u.targetX, u.targetY) !== kind) return false;
   if (store[world.map.idx(u.targetX, u.targetY)] <= 0) return false;
   // Phải đứng ở ô kề bên (không bao giờ đứng trong ô tài nguyên).
@@ -339,8 +400,8 @@ export function sendToSource(world: World, u: Entity, res: WorkerJob) {
     u.path = p0 ?? [];
     return;
   }
-  const kind = res === "wood" ? T_WOOD : T_STONE;
-  // Đứng ở ô cỏ kề bên để khai thác — không bước vào ô rừng/đá.
+  const kind = res === "wood" ? T_WOOD : res === "stone" ? T_STONE : T_FIELD;
+  // Đứng ở ô cỏ kề bên để khai thác — không bước vào ô rừng/đá/ruộng.
   // Thử tối đa 3 điểm: chỗ cũ kẹt đường thì đổi chỗ khác, tránh lặp A* vô hạn.
   let exclude: { tx: number; ty: number } | undefined;
   if (u.targetX !== 0 || u.targetY !== 0) exclude = { tx: u.targetX, ty: u.targetY };

@@ -10,6 +10,7 @@ import { DOCTRINES } from "@/engine/commands";
 import { Game, HUMAN, AI_PLAYER } from "@/engine/Game";
 import { Interaction, ZOOM_MAX, ZOOM_MIN } from "@/engine/input";
 import { renderGame, renderMinimap } from "@/engine/render";
+import { shortages } from "@/engine/systems/economy";
 import { GamePhase, MapFocus } from "@/engine/types";
 import type { AppSettings, MatchConfig } from "@/menu/config";
 import { AI_INFO } from "@/menu/config";
@@ -38,7 +39,8 @@ interface HudState {
   focus: MapFocus;
   autoSpend: boolean;
   kills: number;
-  needs: { gold: number; wood: number; stone: number; water: number };
+  needs: { gold: number; wood: number; stone: number; water: number; food: number };
+  food: number;
   warnings: string[];
   nodes: { name: string; income: number; owner: number }[];
 }
@@ -495,7 +497,7 @@ export default function GameView({
     gameRef.current!.dispatch({ type: "spawnUnit", player: HUMAN, unitDefId });
   };
 
-  const setDirective = (patch: { ecoMil?: number; defAtk?: number; focus?: MapFocus; autoSpend?: boolean; needs?: { gold: number; wood: number; stone: number; water: number } }) => {
+  const setDirective = (patch: { ecoMil?: number; defAtk?: number; focus?: MapFocus; autoSpend?: boolean; needs?: { gold: number; wood: number; stone: number; water: number; food: number } }) => {
     gameRef.current!.dispatch({ type: "setDirective", player: HUMAN, ...patch });
   };
 
@@ -537,6 +539,7 @@ export default function GameView({
         </span>
         <span title="Gỗ: worker đốn rừng gánh về. Archer cần gỗ, Tank cần nhiều gỗ.">🪵 <b className="text-green-300">{hud?.wood ?? 0}</b></span>
         <span title="Đá: worker khai thác gánh về. Tank cần đá.">🪨 <b className="text-zinc-300">{hud?.stone ?? 0}</b></span>
+        <span title="Lúa: worker gặt ruộng gánh về. Lính ăn lúa khi train. Ruộng tự mọc lại.">🌾 <b className="text-yellow-200">{hud?.food ?? 0}</b></span>
         <span title="Population">👥 {hud?.pop ?? 0}/{hud?.popCap ?? 20}</span>
         <span title="Base">🏰 <b className="text-blue-400">{hud?.blueBase ?? 0}</b>
           <span className="text-zinc-500"> vs </span>
@@ -687,19 +690,20 @@ export default function GameView({
             🤖 Auto-chi tiêu {hud?.autoSpend ? "ON" : "OFF"}
           </button>
           <div className="mt-1">
-            <div className="mb-0.5 text-zinc-400">Cần gì? (worker dồn qua)</div>
+            <div className="mb-0.5 text-zinc-400">Cần gì? (kho cạn worker tự đi lấy)</div>
             <div className="flex gap-1">
               {([
                 ["gold", "💰"],
                 ["wood", "🪵"],
                 ["stone", "🪨"],
                 ["water", "💧"],
+                ["food", "🌾"],
               ] as const).map(([k, icon]) => {
                 const v = hud?.needs?.[k] ?? 1;
                 return (
                   <button
                     key={k}
-                    onClick={() => setDirective({ needs: { ...(hud?.needs ?? { gold: 1, wood: 1, stone: 1, water: 1 }), [k]: (v + 1) % 3 } })}
+                    onClick={() => setDirective({ needs: { ...(hud?.needs ?? { gold: 1, wood: 1, stone: 1, water: 1, food: 1 }), [k]: (v + 1) % 3 } })}
                     title="Bấm để đổi: thôi → thường → cần gấp"
                     className={`flex-1 rounded border px-1 py-0.5 ${
                       v === 2
@@ -746,12 +750,14 @@ export default function GameView({
               const afford =
                 (hud?.gold ?? 0) >= def.cost &&
                 (hud?.wood ?? 0) >= (def.wood ?? 0) &&
-                (hud?.stone ?? 0) >= (def.stone ?? 0);
+                (hud?.stone ?? 0) >= (def.stone ?? 0) &&
+                (hud?.food ?? 0) >= (def.food ?? 0);
               const popOk = (hud?.pop ?? 0) + def.supply <= (hud?.popCap ?? 20);
               const ok = afford && popOk;
               const costStr = [`💰${def.cost}`];
               if (def.wood) costStr.push(`🪵${def.wood}`);
               if (def.stone) costStr.push(`🪨${def.stone}`);
+              if (def.food) costStr.push(`🌾${def.food}`);
               return (
                 <button
                   key={id}
@@ -862,10 +868,10 @@ export default function GameView({
             <div className="max-h-[86dvh] w-[calc(100vw-2rem)] max-w-lg overflow-y-auto rounded-xl bg-zinc-900 p-4 sm:p-6 text-sm leading-7" onClick={(e) => e.stopPropagation()}>
               <h2 className="mb-2 text-lg font-bold">🎮 Bạn không đánh nhau — bạn quyết định ai được đánh</h2>
               <ul className="list-disc pl-5 text-zinc-300">
-                <li><b>1-4 / click</b>: thả 👷 Worker (30💰) ⚔️ Soldier (50💰) 🏹 Archer (50💰+25🪵) 🛡️ Tank (100💰+50🪵+25🪨)</li>
+                <li><b>1-4 / click</b>: thả 👷 Worker (30💰) ⚔️ Soldier (50💰+10🌾) 🏹 Archer (50💰+25🪵+10🌾) 🛡️ Tank (100💰+50🪵+25🪨+30🌾)</li>
                 <li>Quân spawn ra <b>tự ra mặt trận</b> — không cần đặt điểm tập kết</li>
-                <li><b>🧭 War Council</b>: kéo Kinh tế↔Quân sự, Thủ↔Công, chọn trọng tâm 💎, bấm <b>Cần 💰🪵🪨💧</b> để worker dồn qua, bật 🤖 auto-chi tiêu</li>
-                <li><b>🌲🪨</b> Worker tự đốn gỗ/đào đá gánh về — Archer cần gỗ, Tank cần gỗ + đá</li>
+                <li><b>🧭 War Council</b>: kéo Kinh tế↔Quân sự, Thủ↔Công, chọn trọng tâm 💎, bấm <b>Cần 💰🪵🪨💧🌾</b> để worker dồn qua, bật 🤖 auto-chi tiêu</li>
+                <li><b>🌲🪨🌾</b> Worker đốn gỗ/đào đá/gặt lúa gánh về — ruộng tự mọc lại, rừng đá thì không</li>
                 <li><b>💧 Nước</b>: worker gánh từ hồ về, quân uống mỗi giây — hết nước yếu 30%</li>
                 <li><b>Worker</b> tự chiếm 💎 (+5 gần / +10 giữa / +20 trung tâm), gặp địch tự chạy</li>
                 <li><b>Soldier</b> săn Worker địch · <b>Archer</b> rỉa Tank từ xa · <b>Tank</b> đi đầu chịu đòn</li>
@@ -903,6 +909,13 @@ function collectHud(game: Game, ui: Interaction): HudState {
   if (me.ore < 50 && me.income < 8) needs.push("💰 Thiếu vàng!");
   if ((me.wood ?? 0) < 25) needs.push("🪵 Thiếu gỗ!");
   if ((me.stone ?? 0) < 25) needs.push("🪨 Thiếu đá!");
+  if ((me.food ?? 0) < 20) needs.push("🌾 Thiếu lúa!");
+  // Worker tự đi lấy khi kho cạn (dù tướng không bấm "Cần gì?").
+  const sh = shortages(me);
+  if (sh.wood && me.needs.wood < 2) needs.push("🤖 Worker tự đi đốn gỗ!");
+  if (sh.stone && me.needs.stone < 2) needs.push("🤖 Worker tự đi lấy đá!");
+  if (sh.water && me.needs.water < 2) needs.push("🤖 Worker tự đi lấy nước!");
+  if (sh.food && (me.needs.food ?? 1) < 2) needs.push("🤖 Worker tự đi gặt lúa!");
   if (me.supplyUsed >= me.supplyCap) needs.push("👥 Pop đầy!");
   let kills = 0;
   for (const u of game.world.entities.values()) {
@@ -915,6 +928,7 @@ function collectHud(game: Game, ui: Interaction): HudState {
     waterNet: me.waterIncome,
     wood: Math.floor(me.wood ?? 0),
     stone: Math.floor(me.stone ?? 0),
+    food: Math.floor(me.food ?? 0),
     pop: me.supplyUsed,
     popCap: me.supplyCap,
     phase: game.phase,

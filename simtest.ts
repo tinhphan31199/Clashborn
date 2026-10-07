@@ -45,8 +45,8 @@ for (let i = 0; i < STEPS; i++) {
 const p0 = w.player(HUMAN);
 const p1 = w.player(AI_PLAYER);
 console.log(`ticks=${game.tickCount} phase=${game.phase} time=${w.time.toFixed(0)}s suddenDeath=${game.suddenDeath}`);
-console.log(`blue: gold=${Math.floor(p0.ore)} income=${Math.round(p0.income)}/s pop=${p0.supplyUsed}/${p0.supplyCap} units=${w.unitsOf(HUMAN).length} water=${Math.floor(p0.water)}(${p0.waterIncome.toFixed(1)}/s)`);
-console.log(`red:  gold=${Math.floor(p1.ore)} income=${Math.round(p1.income)}/s pop=${p1.supplyUsed}/${p1.supplyCap} units=${w.unitsOf(AI_PLAYER).length} water=${Math.floor(p1.water)}(${p1.waterIncome.toFixed(1)}/s)`);
+console.log(`blue: gold=${Math.floor(p0.ore)} income=${Math.round(p0.income)}/s pop=${p0.supplyUsed}/${p0.supplyCap} units=${w.unitsOf(HUMAN).length} food=${Math.floor(p0.food)} water=${Math.floor(p0.water)}(${p0.waterIncome.toFixed(1)}/s)`);
+console.log(`red:  gold=${Math.floor(p1.ore)} income=${Math.round(p1.income)}/s pop=${p1.supplyUsed}/${p1.supplyCap} units=${w.unitsOf(AI_PLAYER).length} food=${Math.floor(p1.food)} water=${Math.floor(p1.water)}(${p1.waterIncome.toFixed(1)}/s)`);
 console.log(`nodes: ${w.nodes().map((n) => `${n.defId}:${n.player}`).join(" ")}`);
 console.log(`base HP: blue=${w.baseOf(HUMAN)?.hp ?? "DEAD"} red=${w.baseOf(AI_PLAYER)?.hp ?? "DEAD"}`);
 

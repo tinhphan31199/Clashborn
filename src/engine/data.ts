@@ -26,9 +26,10 @@ export interface UnitDef {
   /** seconds between attacks */
   cooldown: number;
   cost: number; // gold
-  /** gỗ / đá kèm theo (0 = không cần) */
+  /** gỗ / đá / lúa kèm theo (0 = không cần) */
   wood: number;
   stone: number;
+  food: number;
   /** population cost */
   supply: number;
   /** flat damage reduction */
@@ -86,6 +87,7 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     cost: 30,
     wood: 0,
     stone: 0,
+    food: 0,
     supply: 1,
     armor: 0,
     bonusVsBuilding: 0,
@@ -109,6 +111,7 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     cost: 50,
     wood: 0,
     stone: 0,
+    food: 10,
     supply: 1,
     armor: 0,
     bonusVsBuilding: 0.2,
@@ -132,6 +135,7 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     cost: 50,
     wood: 25,
     stone: 0,
+    food: 10,
     supply: 1,
     armor: 0,
     bonusVsBuilding: 0,
@@ -155,6 +159,7 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     cost: 100,
     wood: 50,
     stone: 25,
+    food: 30,
     supply: 3,
     armor: 2,
     bonusVsBuilding: 0.5,

@@ -166,6 +166,7 @@ export class Game {
             wood: clampNeed(n.wood),
             stone: clampNeed(n.stone),
             water: clampNeed(n.water),
+            food: clampNeed(n.food),
           };
         }
         break;
@@ -328,7 +329,8 @@ export function canAfford(pl: PlayerState, def: UnitDef): boolean {
   return (
     pl.ore >= def.cost &&
     (pl.wood ?? 0) >= (def.wood ?? 0) &&
-    (pl.stone ?? 0) >= (def.stone ?? 0)
+    (pl.stone ?? 0) >= (def.stone ?? 0) &&
+    (pl.food ?? 0) >= (def.food ?? 0)
   );
 }
 
@@ -336,6 +338,7 @@ function payCost(pl: PlayerState, def: UnitDef) {
   pl.ore -= def.cost;
   pl.wood -= def.wood ?? 0;
   pl.stone -= def.stone ?? 0;
+  pl.food -= def.food ?? 0;
 }
 
 function clampNeed(v: number | undefined): number {

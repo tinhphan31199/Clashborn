@@ -10,6 +10,7 @@ export interface FieldArt {
   water: HTMLImageElement | null;
   grass: HTMLImageElement | null;
   base: HTMLImageElement | null;
+  field: HTMLImageElement | null;
 }
 
 const cache: FieldArt = {
@@ -19,6 +20,7 @@ const cache: FieldArt = {
   water: null,
   grass: null,
   base: null,
+  field: null,
 };
 
 let started = false;
@@ -54,6 +56,7 @@ export function fieldArt(): FieldArt {
     loadOne("water", "/assets/water-tile.png");
     loadOne("grass", "/assets/grass-tile.png");
     loadOne("base", "/assets/base.png");
+    loadOne("field", "/assets/field-tile.png");
   }
   return cache;
 }

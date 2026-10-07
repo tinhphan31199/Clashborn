@@ -119,7 +119,7 @@ export interface Effect {
 export type MapFocus = "auto" | "near" | "mid" | "center";
 
 /** Việc của worker: giữ mỏ vàng hay đi gánh gỗ/đá/nước. */
-export type WorkerJob = "node" | "wood" | "stone" | "water";
+export type WorkerJob = "node" | "wood" | "stone" | "water" | "food";
 
 /** Mức cần tài nguyên 0 = thôi, 1 = thường, 2 = cần gấp (worker dồn qua). */
 export interface NeedWeights {
@@ -127,6 +127,7 @@ export interface NeedWeights {
   wood: number;
   stone: number;
   water: number;
+  food: number;
 }
 
 export interface PlayerState {
@@ -155,6 +156,8 @@ export interface PlayerState {
   // ---- Kho gỗ đá (worker gánh về)
   wood: number;
   stone: number;
+  // ---- Kho lúa (worker gặt ruộng gánh về, lính ăn khi train)
+  food: number;
   // ---- Nhu cầu tài nguyên: worker phân vai theo (0 thôi · 1 thường · 2 cần gấp)
   needs: NeedWeights;
 }

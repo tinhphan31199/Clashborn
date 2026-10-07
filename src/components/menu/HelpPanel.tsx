@@ -48,7 +48,7 @@ export default function HelpPanel({ onBack, inGame }: { onBack: () => void; inGa
               return (
                 <div key={id} className="rounded-lg border border-zinc-800 bg-zinc-800/50 p-2 text-xs">
                   <b>[{i + 1}] {d.icon} {d.name}</b> — 💰{d.cost}
-                  {d.wood ? ` 🪵${d.wood}` : ""}{d.stone ? ` 🪨${d.stone}` : ""} · 👥{d.supply}
+                  {d.wood ? ` 🪵${d.wood}` : ""}{d.stone ? ` 🪨${d.stone}` : ""}{d.food ? ` 🌾${d.food}` : ""} · 👥{d.supply}
                   <div className="text-zinc-400">{d.description}</div>
                 </div>
               );
@@ -59,6 +59,7 @@ export default function HelpPanel({ onBack, inGame }: { onBack: () => void; inGa
           <ul className="mb-3 list-disc pl-5 text-sm leading-6 text-zinc-300">
             <li><b>💎 Mỏ vàng:</b> worker đứng trong vòng chiếm → +5 gần / +10 giữa / +20 trung tâm mỗi giây. Base cho +2/s nền.</li>
             <li><b>🪵 Gỗ / 🪨 Đá:</b> worker đốn rồi gánh về base. Archer cần gỗ, Tank cần gỗ + đá.</li>
+            <li><b>🌾 Ruộng lúa:</b> worker gặt lúa gánh về — lính ăn lúa khi train. Ruộng gặt sạch <b>tự mọc lại</b>, rừng/đá thì không.</li>
             <li><b>💧 Nước:</b> node/base ra nước, quân uống mỗi giây (tank khát nhất). Hết nước cả phe <b>yếu 30%</b>.</li>
             <li><b>👥 Population 20:</b> Tank chiếm 3 slot — đừng spam.</li>
           </ul>
@@ -68,7 +69,7 @@ export default function HelpPanel({ onBack, inGame }: { onBack: () => void; inGa
             <li><b>Kinh tế ↔ Quân sự:</b> auto-chi tiêu mua bao nhiêu worker (6 → 2).</li>
             <li><b>Thủ ↔ Công:</b> thủ ôm tuyến 35% gần nhà, công push từ 2 quân / phút 1.</li>
             <li><b>Học thuyết:</b> ⚔️ Rush (công + tâm) · 🛡️ Turtle (kinh tế + gần) · ⚖️ Control (giữa).</li>
-            <li><b>Cần gì:</b> bấm 💰🪵🪨💧 để dồn worker qua tài nguyên thiếu.</li>
+            <li><b>Cần gì:</b> bấm 💰🪵🪨💧🌾 để dồn worker qua — kho cạn (gỗ {"<"} 30, đá {"<"} 15, lúa {"<"} 20, nước cạn) thì worker <b>tự</b> đi lấy, khỏi bấm.</li>
           </ul>
 
           <SectionTitle>⌨️ Điều khiển</SectionTitle>
