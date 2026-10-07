@@ -63,9 +63,16 @@ function rolesTick(world: World) {
     for (const u of workers) count[u.job]++;
 
     // Chuyển những worker rảnh (không gánh, không chạy giặc) sang việc thiếu.
+    // Chuyển những worker rảnh sang việc thiếu.
+    // Đang đi/gánh thì không giật (kẻo cuốc xa mãi không tới).
+    // Chỉ tỉa khi vai hiện tại thừa người.
+    const over: Record<WorkerJob, boolean> = { node: false, wood: false, stone: false, water: false };
+    for (const j of ["node", "wood", "stone", "water"] as WorkerJob[]) {
+      over[j] = count[j] > desired[j];
+    }
     for (const u of workers) {
       if (u.carry > 0) continue;
-      if (!reassignable(world, u)) continue;
+      if (!reassignable(u, over[u.job])) continue;
       // tìm việc đang thiếu nhất
       let want: WorkerJob | null = null;
       let bestGap = 0;
@@ -88,13 +95,17 @@ function rolesTick(world: World) {
   }
 }
 
-/** Worker rảnh để đổi việc: đứng yên/khai thác, không gánh hàng, không chạy giặc. */
-function reassignable(world: World, u: Entity): boolean {
-  if (u.state === "idle" || u.state === "gathering" || u.state === "seekingResource") return true;
-  if (u.state === "moving" && u.path.length === 0) return true; // spawn mới / chạy xong
-  // moving có path: đang chạy giặc → kiểm tra còn giặc không
-  const threat = world.nearestEnemy(u.x, u.y, u.player, 6 * TILE);
-  return !threat;
+/**
+ * Worker rảnh để đổi việc:
+ * - idle / spawn mới (moving hết path): luôn nhận việc mới.
+ * - đang gặt tại chỗ mà vai thừa người: cho chuyển (tỉa dần).
+ * - đang đi đường / đang gánh: không giật.
+ */
+function reassignable(u: Entity, overstaffed: boolean): boolean {
+  if (u.state === "idle") return true;
+  if (u.state === "moving" && u.path.length === 0) return true;
+  if (u.state === "gathering" && overstaffed) return true;
+  return false;
 }
 
 // ---------------------------------------------------------- giữ mỏ vàng
@@ -147,11 +158,23 @@ function tripsTick(world: World, dt: number) {
 
     // Đang gánh → về base nộp.
     if (u.state === "returning") {
-      if (u.path.length > 0) continue;
       const base = world.baseOf(u.player);
+      // Nộp theo khoảng cách TRƯỚC: đường về đông, waypoint cuối kẹt vẫn nộp được.
       if (base && Math.hypot(base.x - u.x, base.y - u.y) < 5 * TILE) {
         deposit(world, u, res);
-      } else if (base) {
+        continue;
+      }
+      if (u.path.length > 0) {
+        // Chống kẹt: 3s không tới thì tìm đường lại (phá thế cân bằng separation).
+        u.gatherTimer += dt;
+        if (u.gatherTimer > 3 && base) {
+          u.gatherTimer = 0;
+          const rp = findPath(world.map, u.x, u.y, base.x, base.y);
+          u.path = rp ?? [];
+        }
+        continue;
+      }
+      if (base) {
         const p = findPath(world.map, u.x, u.y, base.x, base.y);
         u.path = p ?? [];
         if (u.path.length === 0) deposit(world, u, res); // kẹt vẫn nộp
@@ -168,8 +191,24 @@ function tripsTick(world: World, dt: number) {
     }
     if (u.state === "gathering" && u.targetId != null) continue; // giữ mỏ (lỡ job đổi sau)
 
-    // Đang đi → kệ.
-    if (u.state === "seekingResource" && u.path.length > 0) continue;
+    // Đang đi → kệ, nhưng tới gần mục tiêu thì coi như tới nơi
+    // (đông worker chụm 1 điểm hay kẹt waypoint cuối do separation).
+    if (u.state === "seekingResource" && u.path.length > 0) {
+      const tcx = world.map.tileToWorldCenter(u.targetX);
+      const tcy = world.map.tileToWorldCenter(u.targetY);
+      if (Math.hypot(tcx - u.x, tcy - u.y) < TILE * 1.2) {
+        u.path = [];
+      } else {
+        // Kẹt giữa đường quá 3s → tìm đường lại.
+        u.gatherTimer += dt;
+        if (u.gatherTimer > 3) {
+          u.gatherTimer = 0;
+          sendToSource(world, u, res);
+          continue;
+        }
+        continue;
+      }
+    }
 
     // Tới nơi (hết path) → bắt đầu khai thác nếu còn hàng.
     if (u.state === "seekingResource" && u.path.length === 0) {
@@ -181,9 +220,19 @@ function tripsTick(world: World, dt: number) {
       }
       continue;
     }
-    // Rảnh → tìm nguồn.
-    if (u.state === "idle") sendToSource(world, u, res);
+    // Rảnh → tìm nguồn (tôn trọng thời gian nghỉ khi vừa tìm hụt).
+    if (u.state === "idle") {
+      u.repathTimer -= dt;
+      if (u.repathTimer <= 0) sendToSource(world, u, res);
+    }
   }
+}
+
+/** Worker có đứng gần ô (tx,ty) trong bán kính r tiles không? */
+function nearTile(world: World, u: Entity, tx: number, ty: number, r: number): boolean {
+  const dx = Math.abs(world.map.worldToTile(u.x) - tx);
+  const dy = Math.abs(world.map.worldToTile(u.y) - ty);
+  return dx <= r && dy <= r;
 }
 
 function deposit(world: World, u: Entity, res: WorkerJob) {
@@ -194,6 +243,7 @@ function deposit(world: World, u: Entity, res: WorkerJob) {
   u.carry = 0;
   u.state = "idle";
   u.path = [];
+  u.gatherTimer = 0;
   world.addEffect({
     kind: "spark", x1: u.x, y1: u.y, x2: u.x, y2: u.y,
     ttl: 0.3, maxTtl: 0.3, color: "#7CFC00",
@@ -207,11 +257,24 @@ function gatherAt(world: World, u: Entity, res: WorkerJob, dt: number) {
   const tx = u.targetX;
   const ty = u.targetY;
   if (res === "water") {
-    // Múc ở ô nước mục tiêu (đứng bờ bên cạnh).
+    // Múc ở ô nước mục tiêu (đứng bờ bên cạnh). Trôi bờ thì quay lại.
+    const dx = Math.abs(world.map.worldToTile(u.x) - tx);
+    const dy = Math.abs(world.map.worldToTile(u.y) - ty);
+    if (dx > 2 || dy > 2 || world.map.tileAt(tx, ty) !== T_WATER) {
+      sendToSource(world, u, res);
+      return;
+    }
     u.carryType = "water";
     const take = Math.min(TAKE, CARRY_CAP - u.carry);
     u.carry += take; // hồ không cạn
   } else {
+    // Bị đẩy khỏi bờ (separation) → đi lại cho đúng ô kề bên.
+    const dx = Math.abs(world.map.worldToTile(u.x) - tx);
+    const dy = Math.abs(world.map.worldToTile(u.y) - ty);
+    if (dx > 1 || dy > 1) {
+      sendToSource(world, u, res);
+      return;
+    }
     const kind = res === "wood" ? T_WOOD : T_STONE;
     const store = res === "wood" ? world.map.wood : world.map.stone;
     if (world.map.tileAt(tx, ty) !== kind || store[world.map.idx(tx, ty)] <= 0) {
@@ -244,7 +307,12 @@ function sourceLeft(world: World, u: Entity, res: WorkerJob): boolean {
   if (res === "water") return world.map.tileAt(u.targetX, u.targetY) === T_WATER;
   const kind = res === "wood" ? T_WOOD : T_STONE;
   const store = res === "wood" ? world.map.wood : world.map.stone;
-  return world.map.tileAt(u.targetX, u.targetY) === kind && store[world.map.idx(u.targetX, u.targetY)] > 0;
+  if (world.map.tileAt(u.targetX, u.targetY) !== kind) return false;
+  if (store[world.map.idx(u.targetX, u.targetY)] <= 0) return false;
+  // Phải đứng ở ô kề bên (không bao giờ đứng trong ô tài nguyên).
+  const dx = Math.abs(world.map.worldToTile(u.x) - u.targetX);
+  const dy = Math.abs(world.map.worldToTile(u.y) - u.targetY);
+  return dx <= 1 && dy <= 1;
 }
 
 /** Tìm nguồn gần nhất cho job. Không có → đứng yên chờ. */
@@ -253,33 +321,53 @@ export function sendToSource(world: World, u: Entity, res: WorkerJob) {
     const shore = world.map.nearestShore(u.x, u.y);
     if (!shore) {
       u.state = "idle";
+      u.repathTimer = 2;
+      return;
+    }
+    const p0 = findPath(
+      world.map, u.x, u.y,
+      world.map.tileToWorldCenter(shore.tx), world.map.tileToWorldCenter(shore.ty)
+    );
+    if ((!p0 || p0.length === 0) && !nearTile(world, u, shore.wtx, shore.wty, 2)) {
+      u.state = "idle"; // bờ kẹt đường → nghỉ rồi thử lại
+      u.repathTimer = 2;
       return;
     }
     u.targetX = shore.wtx;
     u.targetY = shore.wty;
     u.state = "seekingResource";
-    const p = findPath(
-      world.map, u.x, u.y,
-      world.map.tileToWorldCenter(shore.tx), world.map.tileToWorldCenter(shore.ty)
-    );
-    u.path = p ?? [];
+    u.path = p0 ?? [];
     return;
   }
   const kind = res === "wood" ? T_WOOD : T_STONE;
-  const spot = world.map.nearestHarvest(u.x, u.y, kind);
-  if (!spot) {
-    u.state = "idle"; // cạn kiệt → chờ (needs sẽ điều sang việc khác nếu đổi)
-    u.path = [];
-    return;
+  // Đứng ở ô cỏ kề bên để khai thác — không bước vào ô rừng/đá.
+  // Thử tối đa 3 điểm: chỗ cũ kẹt đường thì đổi chỗ khác, tránh lặp A* vô hạn.
+  let exclude: { tx: number; ty: number } | undefined;
+  if (u.targetX !== 0 || u.targetY !== 0) exclude = { tx: u.targetX, ty: u.targetY };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const spot = world.map.nearestHarvestStand(u.x, u.y, kind, 48, exclude);
+    if (!spot) {
+      u.state = "idle"; // cạn kiệt → chờ (needs sẽ điều sang việc khác nếu đổi)
+      u.path = [];
+      u.repathTimer = 2; // nghỉ 2s rồi tìm lại, đỡ spam A*
+      return;
+    }
+    const p = findPath(
+      world.map, u.x, u.y,
+      world.map.tileToWorldCenter(spot.tx), world.map.tileToWorldCenter(spot.ty)
+    );
+    if (p && p.length > 0) {
+      u.targetX = spot.rtx;
+      u.targetY = spot.rty;
+      u.state = "seekingResource";
+      u.path = p;
+      return;
+    }
+    exclude = { tx: spot.rtx, ty: spot.rty }; // kẹt đường → thử mỏ khác
   }
-  u.targetX = spot.tx;
-  u.targetY = spot.ty;
-  u.state = "seekingResource";
-  const p = findPath(
-    world.map, u.x, u.y,
-    world.map.tileToWorldCenter(spot.tx), world.map.tileToWorldCenter(spot.ty)
-  );
-  u.path = p ?? [];
+  u.state = "idle";
+  u.path = [];
+  u.repathTimer = 2;
 }
 
 // ---------------------------------------------------------- thu nhập

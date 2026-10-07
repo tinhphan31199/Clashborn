@@ -61,17 +61,19 @@ export function movementTick(world: World, dt: number) {
       const ny = dy / d;
       const px = u.x + nx * step + sx * 90 * dt;
       const py = u.y + ny * step + sy * 90 * dt;
-      // Don't let separation push units into water/buildings.
-      const tx = world.map.worldToTile(px);
-      const ty = world.map.worldToTile(py);
-      if (world.map.passable(tx, ty)) {
+      // Quy tắc sắt: không bao giờ bước vào ô có đồ vật (nước/rừng/đá/nhà).
+      // Thử: cả đẩy separation → chỉ theo path → đứng yên chờ.
+      if (world.map.passable(world.map.worldToTile(px), world.map.worldToTile(py))) {
         u.x = px;
         u.y = py;
-      } else {
-        // Move along path only, drop the lateral push.
+      } else if (
+        world.map.passable(world.map.worldToTile(u.x + nx * step), world.map.worldToTile(u.y + ny * step))
+      ) {
+        // Bỏ đẩy ngang, chỉ đi theo đường path.
         u.x += nx * step;
         u.y += ny * step;
       }
+      // else: kẹt cứng giữa đám đông/vật cản → đứng yên, tick sau đường thoáng đi tiếp.
       u.facing = Math.atan2(ny, nx);
     }
   }

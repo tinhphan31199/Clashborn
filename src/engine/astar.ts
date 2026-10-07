@@ -80,7 +80,10 @@ export function findPath(map: TileMap, sx: number, sy: number, gx: number, gy: n
   if (!map.inBounds(stx, sty)) return null;
 
   // Nudge goal to nearest passable tile (spiral search).
-  if (!map.passable(gtx, gty)) {
+  // Nhớ goal gốc có bị kẹt không: nếu kẹt thì điểm cuối là TÂM Ô THOÁNG,
+  // không phải tọa độ gốc (kẻo lính đòi bước vào nhà/cây/đá rồi kẹt mãi).
+  const goalBlocked = !map.passable(gtx, gty);
+  if (goalBlocked) {
     const found = nearestPassable(map, gtx, gty, 6);
     if (!found) return null;
     gtx = found.x;
@@ -107,7 +110,7 @@ export function findPath(map: TileMap, sx: number, sy: number, gx: number, gy: n
   let end: Node | null = null;
   let iterations = 0;
 
-  while (open.size > 0 && iterations++ < 20000) {
+  while (open.size > 0 && iterations++ < 40000) {
     const cur = open.pop()!;
     const ci = cur.y * W + cur.x;
     if (closed[ci]) continue;
@@ -149,8 +152,9 @@ export function findPath(map: TileMap, sx: number, sy: number, gx: number, gy: n
     x: map.tileToWorldCenter(t.x),
     y: map.tileToWorldCenter(t.y),
   }));
-  // Ensure the exact destination is the final waypoint.
-  pts.push({ x: gx, y: gy });
+  // Chỉ thêm điểm đích chính xác khi nó đi được.
+  // Goal kẹt (trong nhà/cây/đá/nước) thì dừng ở tâm ô thoáng kề bên.
+  if (!goalBlocked) pts.push({ x: gx, y: gy });
   return smoothPath(map, { x: sx, y: sy }, pts);
 }
 

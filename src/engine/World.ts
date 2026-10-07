@@ -121,6 +121,65 @@ export class World {
       const [mx, my] = mirror(cx, cy);
       map.scatterStone(rand, mx, my, r, 100);
     }
+    // Đảm bảo thông đường: base xanh tới được base đỏ + 5 node + tâm.
+    // Thiếu là phạt: lính không bao giờ kẹt bên kia tường cây/đá.
+    this.ensureConnected();
+  }
+
+  /** BFS + ủi đường (rộng 2 ô) từ base xanh tới mọi điểm chốt. */
+  private ensureConnected() {
+    const { map } = this;
+    const W = map.w;
+    const H = map.h;
+    const start: [number, number] = [12, 10];
+    // Điểm chốt: tâm, base đỏ, 5 node (tâm ô).
+    const keys: [number, number][] = [
+      [48, 48], [84, 86],
+      [21, 21], [W - 21, H - 21], [35, 43], [W - 35, H - 43], [48, 48],
+    ];
+    const bfs = (): boolean[] => {
+      const seen = new Uint8Array(W * H);
+      const q: [number, number][] = [start];
+      seen[start[1] * W + start[0]] = 1;
+      while (q.length > 0) {
+        const [x, y] = q.pop()!;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H || seen[ny * W + nx]) continue;
+          if (!map.passable(nx, ny)) continue;
+          seen[ny * W + nx] = 1;
+          q.push([nx, ny]);
+        }
+      }
+      return keys.map(([kx, ky]) => seen[ky * W + kx] === 1);
+    };
+    const carve = (x0: number, y0: number, x1: number, y1: number) => {
+      // Đường chữ L rộng 2 ô: ngang rồi dọc.
+      const dig = (x: number, y: number) => {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (!map.inBounds(nx, ny)) continue;
+            const i = map.idx(nx, ny);
+            map.tiles[i] = 0;
+            map.wood[i] = 0;
+            map.stone[i] = 0;
+          }
+        }
+      };
+      // Đường chữ L rộng 2 ô: ngang rồi dọc.
+      for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) dig(x, y0);
+      for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) dig(x1, y);
+    };
+    for (let round = 0; round < 8; round++) {
+      const ok = bfs();
+      if (ok.every(Boolean)) return;
+      for (let i = 0; i < keys.length; i++) {
+        if (!ok[i]) carve(start[0], start[1], keys[i][0], keys[i][1]);
+      }
+    }
   }
 
   // -------------------------------------------------------------- entities

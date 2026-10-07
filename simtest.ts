@@ -17,6 +17,9 @@ buy("soldier");
 game.dispatch({ type: "setDirective", player: HUMAN, ecoMil: 0.5, defAtk: 0.5, focus: "mid", autoSpend: true });
 
 const STEPS = 60 * 60 * 12; // tối đa 12 phút (qua sudden death 10p)
+// Bất biến va chạm: không lính nào được đứng trong ô có đồ vật (nước/rừng/đá/nhà).
+let violations = 0;
+let checks = 0;
 for (let i = 0; i < STEPS; i++) {
   game.update(1 / 60);
   if (game.phase !== "playing") break;
@@ -30,6 +33,13 @@ for (let i = 0; i < STEPS; i++) {
     else if (me.ore >= UNIT_DEFS.tank.cost && soldiers >= 4) buy("tank");
     else if (soldiers % 2 === 0) buy("archer");
     else buy("soldier");
+  }
+  if (i % 10 === 0) {
+    for (const u of w.entities.values()) {
+      if (u.kind !== "unit") continue;
+      checks++;
+      if (!w.map.passable(w.map.worldToTile(u.x), w.map.worldToTile(u.y))) violations++;
+    }
   }
 }
 const p0 = w.player(HUMAN);
@@ -45,4 +55,5 @@ for (const e of w.entities.values()) {
   if (!isFinite(e.x) || !isFinite(e.y) || e.hp > e.maxHp + 1) bad++;
 }
 console.log(bad === 0 ? "ENTITY SANITY OK" : `ENTITY SANITY FAIL: ${bad}`);
+console.log(violations === 0 ? `COLLISION OK (${checks} checks)` : `COLLISION FAIL: ${violations}/${checks} inside blocked tiles`);
 console.log("roster:", SPAWN_ORDER.join(", "));

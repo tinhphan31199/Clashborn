@@ -51,8 +51,12 @@ function workerBrain(world: World, u: Entity, dt: number) {
   if (u.state === "moving" && u.path.length === 0) {
     u.state = "idle";
   }
-  // Đang gánh dở mà rảnh → về base nộp trước.
-  if (u.job !== "node" && u.carry > 0 && u.state !== "returning") {
+  // Đang gánh dở mà rảnh (vừa chạy giặc xong / spawn mới) → về base nộp trước.
+  // Đang gathering/seeking thì kệ — tripsTick cho gánh đầy CAP rồi mới về.
+  if (
+    u.job !== "node" && u.carry > 0 && u.state !== "returning" &&
+    (u.state === "idle" || (u.state === "moving" && u.path.length === 0))
+  ) {
     const base = world.baseOf(u.player);
     u.state = "returning";
     if (base) {

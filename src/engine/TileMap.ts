@@ -51,10 +51,16 @@ export class TileMap {
     return this.tiles[this.idx(tx, ty)];
   }
 
+  /**
+   * Quy tắc di chuyển: ô có đồ vật thì CẤM đi.
+   * Cỏ đi được · nước/hồ, rừng, đá, nhà (blocked) đều không đi được.
+   * Worker khai thác rừng/đá/nước bằng cách đứng ở ô cỏ kề bên.
+   */
   passable(tx: number, ty: number): boolean {
     if (!this.inBounds(tx, ty)) return false;
     const i = this.idx(tx, ty);
-    return this.tiles[i] !== T_WATER && this.blocked[i] === 0;
+    const t = this.tiles[i];
+    return t !== T_WATER && t !== T_WOOD && t !== T_STONE && this.blocked[i] === 0;
   }
 
   worldToTile(wx: number): number {
@@ -89,7 +95,9 @@ export class TileMap {
       for (let x = tx; x < tx + tw; x++) {
         if (!this.inBounds(x, y)) return false;
         const i = this.idx(x, y);
-        if (this.tiles[i] === T_WATER || this.blocked[i] !== 0) return false;
+        const t = this.tiles[i];
+        // Nhà chỉ đặt trên cỏ trống (không đè nước/rừng/đá).
+        if (t !== T_GRASS || this.blocked[i] !== 0) return false;
       }
     }
     return true;
@@ -170,9 +178,43 @@ export class TileMap {
   }
 
   /**
-   * Chỗ đứng lấy nước: ô đi được kề hồ gần nhất.
-   * Trả về {ô đứng} + {ô nước mục tiêu}.
+   * Chỗ đứng khai thác rừng/đá: ô cỏ ĐI ĐƯỢC kề ô tài nguyên còn hàng gần nhất.
+   * Trả về {ô đứng} + {ô tài nguyên}. Worker không bao giờ bước vào ô tài nguyên.
+   * exclude: bỏ qua 1 ô tài nguyên (khi đường tới đó bị kẹt) để thử chỗ khác.
    */
+  nearestHarvestStand(
+    wx: number, wy: number, kind: number, maxTiles = 48,
+    exclude?: { tx: number; ty: number }
+  ): { tx: number; ty: number; rtx: number; rty: number } | null {
+    const stx = this.worldToTile(wx);
+    const sty = this.worldToTile(wy);
+    let best: { tx: number; ty: number; rtx: number; rty: number } | null = null;
+    let bestD = maxTiles * maxTiles;
+    for (let y = Math.max(0, sty - maxTiles); y <= Math.min(this.h - 1, sty + maxTiles); y++) {
+      for (let x = Math.max(0, stx - maxTiles); x <= Math.min(this.w - 1, stx + maxTiles); x++) {
+        const i = this.idx(x, y);
+        if (this.tiles[i] !== kind) continue;
+        if (exclude && x === exclude.tx && y === exclude.ty) continue;
+        const left = kind === T_WOOD ? this.wood[i] : this.stone[i];
+        if (left <= 0) continue;
+        // ô đứng: cỏ kề bên gần worker nhất
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const sx = x + dx;
+            const sy = y + dy;
+            if (!this.passable(sx, sy)) continue;
+            const d = (sx - stx) * (sx - stx) + (sy - sty) * (sy - sty);
+            if (d < bestD) {
+              bestD = d;
+              best = { tx: sx, ty: sy, rtx: x, rty: y };
+            }
+          }
+        }
+      }
+    }
+    return best;
+  }
   nearestShore(wx: number, wy: number, maxTiles = 48): { tx: number; ty: number; wtx: number; wty: number } | null {
     const stx = this.worldToTile(wx);
     const sty = this.worldToTile(wy);
