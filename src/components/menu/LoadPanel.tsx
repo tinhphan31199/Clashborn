@@ -25,10 +25,12 @@ export default function LoadPanel({
     return (
       <div className="text-white">
         <Panel>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-2xl font-black text-amber-200">💾 Tải game</h2>
-            <button onClick={onBack} className="flex min-h-[44px] items-center rounded-lg border border-zinc-700 bg-zinc-800 px-3 text-sm hover:border-zinc-500">
-              ✕ Đóng
+          <div className="relative mb-4 flex min-h-[44px] items-center">
+            <div className="mx-auto max-w-[70%] text-center">
+              <h2 className="truncate text-xl font-black text-amber-200">💾 Tải game</h2>
+            </div>
+            <button onClick={onBack} aria-label="Đóng" className="absolute right-0 flex h-11 w-11 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-lg text-zinc-300 transition-transform active:scale-95">
+              ✕
             </button>
           </div>
           <Body />

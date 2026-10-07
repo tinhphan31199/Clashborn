@@ -81,7 +81,7 @@ export function MenuScreen({
   );
 }
 
-/** Header sticky kiểu app mobile: nút về + tiêu đề. */
+/** Header sticky kiểu app mobile: nút về tròn + tiêu đề giữa + thanh blur. */
 export function MobileHeader({
   title,
   subtitle,
@@ -92,19 +92,20 @@ export function MobileHeader({
   onBack: () => void;
 }) {
   return (
-    <div className="sticky top-0 z-10 w-full bg-gradient-to-b from-black via-black/85 to-transparent pb-3 pt-1">
-      <div className="flex items-center gap-3">
+    <div className="-mx-4 sticky top-0 z-10 w-[calc(100%+2rem)] border-b border-white/10 bg-black/70 px-4 pb-2 pt-2 backdrop-blur-md">
+      <div className="relative flex min-h-[44px] items-center">
         <button
           onClick={onBack}
-          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800/90 px-3 text-base"
           aria-label="Quay lại"
+          className="absolute left-0 flex h-11 w-11 items-center justify-center rounded-full border border-amber-300/40 bg-zinc-800/90 text-2xl leading-none text-amber-200 transition-transform active:scale-95"
         >
-          ←
+          ‹
         </button>
-        <div className="min-w-0">
-          <h2 className="truncate text-xl font-black text-amber-200">{title}</h2>
-          {subtitle && <p className="truncate text-xs text-zinc-500">{subtitle}</p>}
+        <div className="mx-auto max-w-[70%] text-center">
+          <h2 className="truncate text-lg font-black leading-tight text-amber-200">{title}</h2>
+          {subtitle && <p className="truncate text-[11px] text-zinc-500">{subtitle}</p>}
         </div>
+        <div className="absolute right-0 w-11" />
       </div>
     </div>
   );
