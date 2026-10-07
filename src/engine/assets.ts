@@ -12,6 +12,7 @@ export interface FieldArt {
   base: HTMLImageElement | null;
   field: HTMLImageElement | null;
   stump: HTMLImageElement | null;
+  ripe: HTMLImageElement | null;
 }
 
 const cache: FieldArt = {
@@ -23,6 +24,7 @@ const cache: FieldArt = {
   base: null,
   field: null,
   stump: null,
+  ripe: null,
 };
 
 let started = false;
@@ -60,6 +62,7 @@ export function fieldArt(): FieldArt {
     loadOne("base", "/assets/base.png");
     loadOne("field", "/assets/field-tile.png");
     loadOne("stump", "/assets/stump-tile.png");
+    loadOne("ripe", "/assets/field-ripe.png");
   }
   return cache;
 }

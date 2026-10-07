@@ -9,6 +9,7 @@ import { BUILDING_DEFS, SUDDEN_DEATH_AT, TILE, UNIT_DEFS } from "./data";
 import { AIController, AIOptions } from "./systems/ai";
 import { autoTick } from "./systems/auto";
 import { combatTick } from "./systems/combat";
+import { constructionTick } from "./systems/construction";
 import { economyTick, suddenDeathActive } from "./systems/economy";
 import { fogTick } from "./systems/fog";
 import { movementTick } from "./systems/movement";
@@ -244,6 +245,7 @@ export class Game {
     movementTick(w, dt);
     combatTick(w, dt);
     economyTick(w, dt);
+    constructionTick(w, dt);
     fogTick(w);
     for (let i = w.effects.length - 1; i >= 0; i--) {
       w.effects[i].ttl -= dt;

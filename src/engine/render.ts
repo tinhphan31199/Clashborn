@@ -130,19 +130,19 @@ export function renderGame(
           ctx.fillRect(px + 9, py + 14, 14, 4);
         }
       } else if (t === T_FIELD) {
-        // Ruộng lúa: sprite PixelLab, chưa tải xong thì vẽ luống fallback.
-        // Xanh = lúa non (chưa gặt được) · vàng óng = lúa chín (gặt được).
+        // Ruộng lúa: non (xanh) → chín vàng (sprite riêng). Chưa tải xong thì fallback.
         const amt = map.rice[map.idx(tx, ty)];
         const ripe = amt >= RICE_RIPE_AT;
-        if (art.field) {
-          ctx.drawImage(art.field, px, py, TILE, TILE);
+        const sprite = ripe ? art.ripe ?? art.field : art.field;
+        if (sprite) {
+          ctx.drawImage(sprite, px, py, TILE, TILE);
           if (!ripe) {
             // Phủ xanh theo độ non (càng non càng xanh đậm).
             ctx.fillStyle = `rgba(46,125,50,${Math.min(0.55, (RICE_RIPE_AT - amt) / RICE_RIPE_AT)})`;
             ctx.fillRect(px, py, TILE, TILE);
           } else {
             // Chín: ánh vàng nhẹ cho nhận ra từ xa.
-            ctx.fillStyle = "rgba(232,195,58,0.18)";
+            ctx.fillStyle = "rgba(232,195,58,0.15)";
             ctx.fillRect(px, py, TILE, TILE);
           }
         } else {
@@ -363,16 +363,35 @@ function drawNodeOrBase(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
 
   ctx.font = `${isBase ? 34 : 22}px sans-serif`;
   ctx.textAlign = "center";
-  if (!isBase && art.diamond) {
+  if (!isBase && art.diamond && e.defId !== "house" && e.defId !== "farm") {
     // mỏ kim cương bằng sprite (vừa khít ô 2x2)
     ctx.drawImage(art.diamond, px, py, wpx, hpx);
   } else if (isBase && art.base) {
     // thành chính bằng sprite (vừa khít ô 4x4)
     ctx.drawImage(art.base, px, py, wpx, hpx);
+  } else if (e.defId === "house") {
+    drawHouse(ctx, px, py, wpx, hpx, e.underConstruction ? e.buildProgress : 1);
+  } else if (e.defId === "farm") {
+    drawFarm(ctx, px, py, wpx, hpx, e.underConstruction ? e.buildProgress : 1);
   } else {
     ctx.fillText(isBase ? "🏰" : "💎", px + wpx / 2, py + hpx / 2 + (isBase ? 12 : 8));
   }
   ctx.textAlign = "left";
+
+  // Móng đang xây: khung đứt nét + % tiến độ.
+  if (e.underConstruction) {
+    ctx.strokeStyle = "#fbbf24";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(px - 3, py - 3, wpx + 6, hpx + 6);
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#fbbf24";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`🏗 ${Math.floor(e.buildProgress * 100)}%`, px + wpx / 2, py + hpx + 13);
+    ctx.textAlign = "left";
+    return;
+  }
 
   const def = BUILDING_DEFS[e.defId];
   if (def?.income) {
@@ -382,6 +401,42 @@ function drawNodeOrBase(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
     ctx.fillText(`+${def.income}/s`, px + wpx / 2, py + hpx + 13);
     ctx.textAlign = "left";
   }
+}
+
+/** Nhà: khối nâu + mái đỏ. Farm: luống xanh + hàng rào. */
+function drawHouse(ctx: CanvasRenderingContext2D, px: number, py: number, w: number, h: number, done: number) {
+  const bw = w * 0.7;
+  const bh = h * 0.55;
+  const bx = px + (w - bw) / 2;
+  const by = py + h - bh - 4;
+  ctx.fillStyle = "#8a5a2b";
+  ctx.fillRect(bx, by + (h - bh) * 0.3 * done, bw, bh * done);
+  ctx.fillStyle = "#b91c1c";
+  ctx.beginPath();
+  ctx.moveTo(bx - 4, by + 6);
+  ctx.lineTo(bx + bw / 2, by - 10);
+  ctx.lineTo(bx + bw + 4, by + 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#3f2a12";
+  ctx.fillRect(bx + bw / 2 - 4, by + bh - 12, 8, 12);
+}
+
+function drawFarm(ctx: CanvasRenderingContext2D, px: number, py: number, w: number, h: number, done: number) {
+  const rows = 3;
+  for (let r = 0; r < rows; r++) {
+    const ry = py + 8 + (r * (h - 16)) / rows;
+    ctx.fillStyle = r % 2 === 0 ? "#4d7c0f" : "#3f6212";
+    ctx.fillRect(px + 6, ry, (w - 12) * done, (h - 16) / rows - 2);
+  }
+  ctx.strokeStyle = "#a16207";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px + 3, py + 3, w - 6, h - 6);
+  ctx.fillStyle = "#fbbf24";
+  ctx.font = "13px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("🌾", px + w / 2, py + 14);
+  ctx.textAlign = "left";
 }
 
 function drawHealthBar(ctx: CanvasRenderingContext2D, wx: number, wy: number, e: Entity) {
@@ -417,7 +472,7 @@ export function renderMinimap(
         const t = map.tiles[map.idx(tx, ty)];
         if (t === T_WOOD) ctx.fillStyle = "#2d5a27";
         else if (t === T_STONE) ctx.fillStyle = "#6b6b6b";
-        else if (t === T_FIELD) ctx.fillStyle = "#8a7a3a";
+        else if (t === T_FIELD) ctx.fillStyle = map.rice[map.idx(tx, ty)] >= RICE_RIPE_AT ? "#c9a227" : "#5a6b2f";
         else if (t === T_STUMP) ctx.fillStyle = "#5a4a28";
         else ctx.fillStyle = "#2c5a2a";
       }

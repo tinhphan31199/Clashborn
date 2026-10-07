@@ -10,6 +10,8 @@ import { DOCTRINES } from "@/engine/commands";
 import { Game, HUMAN, AI_PLAYER } from "@/engine/Game";
 import { Interaction, ZOOM_MAX, ZOOM_MIN } from "@/engine/input";
 import { renderGame, renderMinimap } from "@/engine/render";
+import { MAX_HOUSES } from "@/engine/data";
+import { finishedBuildings } from "@/engine/systems/construction";
 import { shortages } from "@/engine/systems/economy";
 import { GamePhase, MapFocus } from "@/engine/types";
 import type { AppSettings, MatchConfig } from "@/menu/config";
@@ -25,6 +27,8 @@ interface HudState {
   stone: number;
   pop: number;
   popCap: number;
+  houses: number;
+  farms: number;
   phase: GamePhase;
   time: number;
   suddenDeath: boolean;
@@ -541,6 +545,7 @@ export default function GameView({
         <span title="Đá: worker khai thác gánh về. Tank cần đá.">🪨 <b className="text-zinc-300">{hud?.stone ?? 0}</b></span>
         <span title="Lúa: worker gặt ruộng gánh về. Lính ăn lúa khi train. Ruộng tự mọc lại.">🌾 <b className="text-yellow-200">{hud?.food ?? 0}</b></span>
         <span title="Population">👥 {hud?.pop ?? 0}/{hud?.popCap ?? 20}</span>
+        <span title="Nhà (+5 pop) / Trang trại (kho phụ +25%, lúa chín nhanh)">🏠{hud?.houses ?? 0} 🚜{hud?.farms ?? 0}</span>
         <span title="Base">🏰 <b className="text-blue-400">{hud?.blueBase ?? 0}</b>
           <span className="text-zinc-500"> vs </span>
           <b className="text-red-400">{hud?.redBase ?? 0}</b> 🏰
@@ -916,7 +921,17 @@ function collectHud(game: Game, ui: Interaction): HudState {
   if (sh.stone && me.needs.stone < 2) needs.push("🤖 Worker tự đi lấy đá!");
   if (sh.water && me.needs.water < 2) needs.push("🤖 Worker tự đi lấy nước!");
   if (sh.food && (me.needs.food ?? 1) < 2) needs.push("🤖 Worker tự đi gặt lúa!");
-  if (me.supplyUsed >= me.supplyCap) needs.push("👥 Pop đầy!");
+  if (me.supplyUsed >= me.supplyCap) {
+    const houses = finishedBuildings(game.world, HUMAN, "house").length;
+    if (houses < MAX_HOUSES && (me.wood ?? 0) < 50) needs.push("🪵 Thiếu gỗ xây nhà!");
+    else needs.push("👥 Pop đầy!");
+  }
+  for (const e of game.world.entities.values()) {
+    if (e.kind === "building" && e.player === HUMAN && e.underConstruction) {
+      needs.push(e.defId === "house" ? "🏠 Đang xây nhà…" : "🚜 Đang xây trang trại…");
+      break;
+    }
+  }
   let kills = 0;
   for (const u of game.world.entities.values()) {
     if (u.kind === "unit" && u.player === HUMAN) kills += u.kills ?? 0;
@@ -931,6 +946,8 @@ function collectHud(game: Game, ui: Interaction): HudState {
     food: Math.floor(me.food ?? 0),
     pop: me.supplyUsed,
     popCap: me.supplyCap,
+    houses: finishedBuildings(game.world, HUMAN, "house").length,
+    farms: finishedBuildings(game.world, HUMAN, "farm").length,
     phase: game.phase,
     time: game.world.time,
     suddenDeath: game.suddenDeath,

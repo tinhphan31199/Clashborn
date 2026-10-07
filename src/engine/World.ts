@@ -6,7 +6,7 @@
  * - supplyCap = POP_CAP hằng số (20). Không xây nhà.
  */
 import { TileMap, makeRng } from "./TileMap";
-import { BUILDING_DEFS, POP_CAP, TILE, UNIT_DEFS } from "./data";
+import { BUILDING_DEFS, POP_CAP, HOUSE_POP, TILE, UNIT_DEFS } from "./data";
 import { Effect, Entity, EntityId, EntityKind, PlayerId, PlayerState, Projectile, Vec2 } from "./types";
 
 export const MAP_W = 96;
@@ -322,7 +322,7 @@ export class World {
     return this.entities.get(id);
   }
 
-  /** Recompute supplyUsed (cap luôn = POP_CAP). */
+  /** Recompute supplyUsed; cap = POP_CAP + 5 mỗi nhà đã xong. */
   recomputeSupply() {
     for (const p of this.players) {
       p.supplyUsed = 0;
@@ -330,7 +330,13 @@ export class World {
     }
     const byId = new Map(this.players.map((p) => [p.id, p]));
     for (const e of this.entities.values()) {
-      if (e.kind !== "unit") continue;
+      if (e.kind === "building") {
+        if (e.defId === "house" && !e.underConstruction) {
+          const p = byId.get(e.player);
+          if (p) p.supplyCap += HOUSE_POP;
+        }
+        continue;
+      }
       const p = byId.get(e.player);
       if (!p) continue;
       p.supplyUsed += UNIT_DEFS[e.defId]?.supply ?? 1;

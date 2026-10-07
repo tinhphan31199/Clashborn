@@ -53,8 +53,10 @@ function workerBrain(world: World, u: Entity, dt: number) {
   }
   // Đang gánh dở mà rảnh (vừa chạy giặc xong / spawn mới) → về base nộp trước.
   // Đang gathering/seeking thì kệ — tripsTick cho gánh đầy CAP rồi mới về.
+  // Ngoại lệ: worker lúa gánh NƯỚC đi tưới thì kệ (không phải hàng nộp kho).
   if (
     u.job !== "node" && u.carry > 0 && u.state !== "returning" &&
+    !(u.job === "food" && u.carryType === "water") &&
     (u.state === "idle" || (u.state === "moving" && u.path.length === 0))
   ) {
     const base = world.baseOf(u.player);

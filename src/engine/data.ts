@@ -54,7 +54,10 @@ export interface BuildingDef {
   /** footprint in tiles */
   w: number;
   h: number;
-  cost: number;
+  cost: number; // gold
+  /** gỗ / đá xây dựng (0 = không tốn) */
+  wood: number;
+  stone: number;
   armor: number;
   sight: number;
   /** gold per second khi được sở hữu (chỉ node) */
@@ -70,6 +73,14 @@ export const TILE = 32;
 
 /** Population cap toàn trận. */
 export const POP_CAP = 20;
+/** Mỗi nhà đã xong +5 pop. */
+export const HOUSE_POP = 5;
+export const MAX_HOUSES = 2;
+export const MAX_FARMS = 2;
+/** Giây xây xong 1 công trình / 1 thợ. */
+export const BUILD_TIME = 15;
+/** Gỗ dư tới đây mới nghĩ tới trang trại. */
+export const FARM_WOOD_STOCK = 150;
 /** Sudden death sau 10 phút. */
 export const SUDDEN_DEATH_AT = 10 * 60;
 
@@ -184,6 +195,8 @@ export const BUILDING_DEFS: Record<string, BuildingDef> = {
     w: 4,
     h: 4,
     cost: 0,
+    wood: 0,
+    stone: 0,
     armor: 2,
     sight: 10,
     income: 2, // thu nhập nền để không bao giờ kẹt cứng
@@ -199,6 +212,8 @@ export const BUILDING_DEFS: Record<string, BuildingDef> = {
     w: 2,
     h: 2,
     cost: 0,
+    wood: 0,
+    stone: 0,
     armor: 0,
     sight: 4,
     income: 5,
@@ -214,6 +229,8 @@ export const BUILDING_DEFS: Record<string, BuildingDef> = {
     w: 2,
     h: 2,
     cost: 0,
+    wood: 0,
+    stone: 0,
     armor: 0,
     sight: 4,
     income: 10,
@@ -229,11 +246,47 @@ export const BUILDING_DEFS: Record<string, BuildingDef> = {
     w: 2,
     h: 2,
     cost: 0,
+    wood: 0,
+    stone: 0,
     armor: 0,
     sight: 5,
     income: 20,
     water: 0,
     captureRadius: 5,
     description: "+20 Gold/s. Tử địa — giàu nhanh, chết cũng nhanh.",
+  },
+  house: {
+    id: "house",
+    name: "Nhà",
+    icon: "🏠",
+    hp: 300,
+    w: 2,
+    h: 2,
+    cost: 0,
+    wood: 50,
+    stone: 0,
+    armor: 0,
+    sight: 4,
+    income: 0,
+    water: 0,
+    captureRadius: 0,
+    description: "+5 dân số. Nông dân tự xây khi sắp đầy pop.",
+  },
+  farm: {
+    id: "farm",
+    name: "Trang trại",
+    icon: "🌾",
+    hp: 400,
+    w: 3,
+    h: 3,
+    cost: 0,
+    wood: 100,
+    stone: 25,
+    armor: 0,
+    sight: 5,
+    income: 0,
+    water: 0,
+    captureRadius: 0,
+    description: "Kho phụ: nộp tại farm +25%. Tưới ruộng quanh farm +50%/gáo (2 gáo là chín).",
   },
 };

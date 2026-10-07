@@ -7,6 +7,7 @@
 import { BUILDING_DEFS, TILE, UNIT_DEFS } from "../data";
 import { RICE_RIPE_AT, STUMP_REGROW_TIME, T_FIELD, T_GRASS, T_STONE, T_STUMP, T_WATER, T_WOOD } from "../TileMap";
 import { findPath } from "../astar";
+import { finishedBuildings } from "./construction";
 import { Entity, NeedWeights, WorkerJob } from "../types";
 import { World } from "../World";
 
@@ -65,8 +66,7 @@ export function economyTick(world: World, dt: number) {
   incomeTick(world, dt);
 }
 
-/** Hồi phục map: lúa mọc lại + gốc cây mọc thành cây.
- *  Lúa CHÍN VÀNG (rice >= ngưỡng chín) mới gặt được, còn xanh thì chờ. */
+/** Hồi phục map: gốc cây mọc thành cây. Lúa KHÔNG tự mọc — phải tưới 3 gáo. */
 export const REGROW_RATE = 1.2;
 export const REGROW_CAP = 60;
 /** Ô ruộng này đã chín chưa? */
@@ -76,10 +76,7 @@ export function isRipe(rice: number): boolean {
 function regrowTick(world: World, dt: number) {
   const { map } = world;
   for (let i = 0; i < map.tiles.length; i++) {
-    const t = map.tiles[i];
-    if (t === T_FIELD) {
-      if (map.rice[i] < REGROW_CAP) map.rice[i] = Math.min(REGROW_CAP, map.rice[i] + REGROW_RATE * dt);
-    } else if (t === T_STUMP) {
+    if (map.tiles[i] !== T_STUMP) continue;
       map.stumpTimer[i] -= dt;
       if (map.stumpTimer[i] <= 0) {
         // Mọc lại thành cây đầy máu.
@@ -89,7 +86,6 @@ function regrowTick(world: World, dt: number) {
       }
     }
   }
-}
 
 // ---------------------------------------------------------- phân vai
 
@@ -122,7 +118,7 @@ function rolesTick(world: World) {
       // phần lẻ cho việc cần nhất
       let k = 0;
       while (assigned < slots && k < 4) {
-        desired[jobs[order[k % 3]]]++;
+        desired[jobs[order[k % 4]]]++;
         assigned++;
         k++;
       }
@@ -223,28 +219,40 @@ function tripsTick(world: World, dt: number) {
   for (const u of world.entities.values()) {
     if (u.kind !== "unit" || u.defId !== "worker") continue;
     if (u.job === "node") continue;
+    // Lúa: 2 việc trong 1 (tưới 3 gáo cho chín → gặt), lái riêng.
+    if (u.job === "food") {
+      foodTick(world, u, dt);
+      continue;
+    }
     const res = u.job; // 'wood' | 'stone' | 'water'
 
-    // Đang gánh → về base nộp.
+    // Đang gánh → về điểm nộp gần nhất (base 5 ô, farm 4 ô) để nộp.
     if (u.state === "returning") {
-      const base = world.baseOf(u.player);
+      const drops = dropoffs(world, u.player);
       // Nộp theo khoảng cách TRƯỚC: đường về đông, waypoint cuối kẹt vẫn nộp được.
-      if (base && Math.hypot(base.x - u.x, base.y - u.y) < 5 * TILE) {
-        deposit(world, u, res);
-        continue;
+      let deposited = false;
+      for (const d of drops) {
+        if (Math.hypot(d.x - u.x, d.y - u.y) < (d.farm ? 4 : 5) * TILE) {
+          deposit(world, u, res);
+          deposited = true;
+          break;
+        }
       }
+      if (deposited) continue;
       if (u.path.length > 0) {
         // Chống kẹt: 3s không tới thì tìm đường lại (phá thế cân bằng separation).
         u.gatherTimer += dt;
-        if (u.gatherTimer > 3 && base) {
+        if (u.gatherTimer > 3 && drops.length > 0) {
           u.gatherTimer = 0;
-          const rp = findPath(world.map, u.x, u.y, base.x, base.y);
+          const near = nearestDrop(drops, u.x, u.y);
+          const rp = findPath(world.map, u.x, u.y, near.x, near.y);
           u.path = rp ?? [];
         }
         continue;
       }
-      if (base) {
-        const p = findPath(world.map, u.x, u.y, base.x, base.y);
+      if (drops.length > 0) {
+        const near = nearestDrop(drops, u.x, u.y);
+        const p = findPath(world.map, u.x, u.y, near.x, near.y);
         u.path = p ?? [];
         if (u.path.length === 0) deposit(world, u, res); // kẹt vẫn nộp
       } else {
@@ -304,12 +312,250 @@ function nearTile(world: World, u: Entity, tx: number, ty: number, r: number): b
   return dx <= r && dy <= r;
 }
 
+/** Worker có đứng gần ô (tx,ty) trong bán kính r tiles không? */
+/**
+ * Não lúa: worker vừa làm thủy lợi vừa làm nông dân.
+ *  Múc nước ở hồ → tưới ruộng khát (+20/gáo, 3 gáo là chín) → gặt lúa chín gánh về.
+ *  Ruộng gần trang trại đã xong được +50% mỗi gáo (2 gáo là chín).
+ */
+const RICE_POUR = 20;
+
+function nearFinishedFarm(world: World, u: Entity): boolean {
+  for (const f of finishedBuildings(world, u.player, "farm")) {
+    if (Math.hypot(f.x - u.x, f.y - u.y) < 6 * TILE) return true;
+  }
+  return false;
+}
+
+function goReturnFood(world: World, u: Entity) {
+  const drops = dropoffs(world, u.player);
+  if (drops.length === 0) {
+    u.state = "idle";
+    return;
+  }
+  const near = nearestDrop(drops, u.x, u.y);
+  u.state = "returning";
+  const p = findPath(world.map, u.x, u.y, near.x, near.y);
+  u.path = p ?? [];
+}
+
+function goRipeField(world: World, u: Entity): boolean {
+  const spot = world.map.nearestHarvestStand(u.x, u.y, T_FIELD, 48);
+  if (!spot) return false;
+  const p = findPath(
+    world.map, u.x, u.y,
+    world.map.tileToWorldCenter(spot.tx), world.map.tileToWorldCenter(spot.ty)
+  );
+  if (!p || p.length === 0) return false;
+  u.targetX = spot.rtx;
+  u.targetY = spot.rty;
+  u.state = "seekingResource";
+  u.path = p;
+  return true;
+}
+
+function goThirstyField(world: World, u: Entity): boolean {
+  const spot = world.map.nearestThirstyStand(u.x, u.y, 48);
+  if (!spot) return false;
+  const p = findPath(
+    world.map, u.x, u.y,
+    world.map.tileToWorldCenter(spot.tx), world.map.tileToWorldCenter(spot.ty)
+  );
+  if (!p || p.length === 0) return false;
+  u.targetX = spot.rtx;
+  u.targetY = spot.rty;
+  u.state = "seekingResource";
+  u.path = p;
+  return true;
+}
+
+function foodTick(world: World, u: Entity, dt: number) {
+  const map = world.map;
+  if (u.carry > 0 && u.carryType !== "food" && u.carryType !== "water") u.carry = 0;
+
+  // 1. Gánh lúa về nộp (điểm nộp xử lý ở nhánh returning chung bên dưới? không —
+  //    foodTick tự lái: tới gần điểm nộp thì deposit).
+  if (u.state === "returning") {
+    if (u.carryType !== "food" || u.carry <= 0) {
+      u.carry = 0;
+      u.state = "idle";
+      u.path = [];
+      return;
+    }
+    const drops = dropoffs(world, u.player);
+    let deposited = false;
+    for (const d of drops) {
+      if (Math.hypot(d.x - u.x, d.y - u.y) < (d.farm ? 4 : 5) * TILE) {
+        deposit(world, u, "food");
+        deposited = true;
+        break;
+      }
+    }
+    if (deposited) return;
+    if (u.path.length > 0) {
+      u.gatherTimer += dt;
+      if (u.gatherTimer > 3 && drops.length > 0) {
+        u.gatherTimer = 0;
+        const near = nearestDrop(drops, u.x, u.y);
+        const rp = findPath(world.map, u.x, u.y, near.x, near.y);
+        u.path = rp ?? [];
+      }
+      return;
+    }
+    if (drops.length > 0) {
+      const near = nearestDrop(drops, u.x, u.y);
+      const p = findPath(world.map, u.x, u.y, near.x, near.y);
+      u.path = p ?? [];
+      if (u.path.length === 0) deposit(world, u, "food");
+    } else {
+      u.state = "idle";
+    }
+    return;
+  }
+
+  // Đang đi → kệ, tới gần mục tiêu thì coi như tới.
+  if (u.state === "seekingResource" && u.path.length > 0) {
+    const tcx = map.tileToWorldCenter(u.targetX);
+    const tcy = map.tileToWorldCenter(u.targetY);
+    if (Math.hypot(tcx - u.x, tcy - u.y) < TILE * 1.2) u.path = [];
+    else {
+      u.gatherTimer += dt;
+      if (u.gatherTimer > 3) {
+        u.gatherTimer = 0;
+        u.state = "idle"; // kẹt → chọn lại việc dưới
+      }
+    }
+    return;
+  }
+
+  const t = map.tileAt(u.targetX, u.targetY);
+
+  // 2. Gánh lúa dở → gặt tiếp cho đầy.
+  if (u.carryType === "food" && u.carry > 0) {
+    if (u.carry >= CARRY_CAP) {
+      goReturnFood(world, u);
+      return;
+    }
+    if (t === T_FIELD && nearTile(world, u, u.targetX, u.targetY, 1)) {
+      const i = map.idx(u.targetX, u.targetY);
+      if (map.rice[i] > 0 && isRipe(map.rice[i])) {
+        u.state = "gathering";
+        gatherAt(world, u, "food", dt);
+        return;
+      }
+    }
+    if (!goRipeField(world, u)) goReturnFood(world, u); // hết ruộng chín → về nộp
+    return;
+  }
+
+  // 3. Đứng kề ruộng khát → tưới (đủ 1 gáo) hoặc đi múc nước.
+  if (t === T_FIELD && nearTile(world, u, u.targetX, u.targetY, 1)) {
+    const i = map.idx(u.targetX, u.targetY);
+    if (map.rice[i] < RICE_RIPE_AT) {
+      if (u.carryType === "water" && u.carry >= RICE_POUR) {
+        let pour = RICE_POUR;
+        if (nearFinishedFarm(world, u)) pour = Math.round(pour * 1.5); // gần farm: 2 gáo là chín
+        map.rice[i] = Math.min(RICE_RIPE_AT, map.rice[i] + pour);
+        u.carry -= RICE_POUR;
+        if (u.carry < 0) u.carry = 0;
+        u.state = "idle";
+        u.gatherTimer = 0;
+        world.addEffect({
+          kind: "spark", x1: u.x, y1: u.y - 6, x2: u.x, y2: u.y - 6,
+          ttl: 0.4, maxTtl: 0.4, color: "#38bdf8",
+        });
+        return;
+      }
+      // Tay không / thiếu nước → ra hồ múc.
+      u.state = "idle";
+      sendToSource(world, u, "water");
+      // sendToSource đặt target hồ; foodTick hiệp sau thấy target nước sẽ múc.
+      return;
+    }
+    // Ruộng đã chín: gặt (đổ bỏ gáo nước dở nếu có).
+    if (u.carryType === "water" && u.carry > 0) u.carry = 0;
+    if (u.carry === 0) {
+      u.state = "gathering";
+      gatherAt(world, u, "food", dt);
+      return;
+    }
+    goReturnFood(world, u);
+    return;
+  }
+
+  // 4. Đứng kề hồ → múc nước (đủ 1 gáo thì đi tưới).
+  if (t === T_WATER && nearTile(world, u, u.targetX, u.targetY, 2)) {
+    if (u.carryType === "water" && u.carry >= RICE_POUR) {
+      if (!goThirstyField(world, u)) u.state = "idle";
+      return;
+    }
+    u.state = "gathering";
+    u.carryType = "water";
+    u.gatherTimer += dt;
+    if (u.gatherTimer < GATHER_TIME) return;
+    u.gatherTimer = 0;
+    u.carry = Math.min(CARRY_CAP, u.carry + TAKE);
+    world.addEffect({
+      kind: "spark", x1: u.x, y1: u.y, x2: u.x, y2: u.y,
+      ttl: 0.3, maxTtl: 0.3, color: "#38bdf8",
+    });
+    return;
+  }
+
+  // 5. Chọn việc: tay không → gặt ruộng chín trước (có ăn ngay), không có thì đi tưới.
+  if (u.carry === 0) {
+    if (goRipeField(world, u)) return;
+  }
+  if (u.carryType === "water" && u.carry >= RICE_POUR) {
+    if (!goThirstyField(world, u)) {
+      // Không còn ruộng khát: nước dở đổ bỏ, chờ việc (rolesTick có thể đổi vai).
+      u.carry = 0;
+      u.state = "idle";
+    }
+    return;
+  }
+  // Đi múc nước.
+  sendToSource(world, u, "water");
+}
+
+/** Điểm nộp hàng: base + các trang trại đã xong. */
+interface Drop {
+  x: number;
+  y: number;
+  farm: boolean;
+}
+
+function dropoffs(world: World, player: number): Drop[] {
+  const out: Drop[] = [];
+  const base = world.baseOf(player);
+  if (base) out.push({ x: base.x, y: base.y, farm: false });
+  for (const f of finishedBuildings(world, player, "farm")) {
+    out.push({ x: f.x, y: f.y, farm: true });
+  }
+  return out;
+}
+
+function nearestDrop(drops: Drop[], x: number, y: number): Drop {
+  let best = drops[0];
+  let bestD = Infinity;
+  for (const d of drops) {
+    const dd = Math.hypot(d.x - x, d.y - y);
+    if (dd < bestD) {
+      bestD = dd;
+      best = d;
+    }
+  }
+  return best;
+}
+
 function deposit(world: World, u: Entity, res: WorkerJob) {
   const pl = world.player(u.player);
-  if (u.carryType === "wood") pl.wood += Math.floor(u.carry);
-  else if (u.carryType === "stone") pl.stone += Math.floor(u.carry);
-  else if (u.carryType === "water") pl.water = Math.min(WATER_CAP, pl.water + u.carry);
-  else if (u.carryType === "food") pl.food = Math.min(FOOD_CAP, pl.food + Math.floor(u.carry));
+  // Nộp khi có trang trại: +25% sản lượng (gỗ/đá/nước/lúa).
+  const bonus = finishedBuildings(world, u.player, "farm").length > 0 ? 1.25 : 1;
+  if (u.carryType === "wood") pl.wood += Math.floor(u.carry * bonus);
+  else if (u.carryType === "stone") pl.stone += Math.floor(u.carry * bonus);
+  else if (u.carryType === "water") pl.water = Math.min(WATER_CAP, pl.water + u.carry * bonus);
+  else if (u.carryType === "food") pl.food = Math.min(FOOD_CAP, pl.food + Math.floor(u.carry * bonus));
   u.carry = 0;
   u.state = "idle";
   u.path = [];
@@ -378,10 +624,11 @@ function gatherAt(world: World, u: Entity, res: WorkerJob, dt: number) {
     color: res === "wood" ? "#4ade80" : res === "stone" ? "#a8a29e" : res === "food" ? "#fbbf24" : "#38bdf8",
   });
   if (u.carry >= CARRY_CAP) {
-    const base = world.baseOf(u.player);
+    const drops = dropoffs(world, u.player);
     u.state = "returning";
-    if (base) {
-      const p = findPath(world.map, u.x, u.y, base.x, base.y);
+    if (drops.length > 0) {
+      const near = nearestDrop(drops, u.x, u.y);
+      const p = findPath(world.map, u.x, u.y, near.x, near.y);
       u.path = p ?? [];
     }
   }

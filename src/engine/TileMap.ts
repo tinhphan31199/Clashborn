@@ -20,8 +20,9 @@ export const T_FIELD = 5;
 export const T_STUMP = 6;
 /** Gốc cây mọc lại thành cây sau từng này giây. */
 export const STUMP_REGROW_TIME = 30;
-/** Lúa trên ô ruộng đạt mức này mới CHÍN VÀNG, gặt được. */
-export const RICE_RIPE_AT = 40;
+/** Lúa đạt mức này mới CHÍN VÀNG, gặt được = 3 gáo nước (20/gáo). Ruộng mới khô rang. */
+export const RICE_RIPE_AT = 60;
+export const RICE_POUR = 20;
 
 export class TileMap {
   w: number;
@@ -167,7 +168,8 @@ export class TileMap {
           const i = this.idx(x, y);
           if (this.tiles[i] === T_GRASS) {
             this.tiles[i] = T_FIELD;
-            this.rice[i] = amount * (0.7 + rand() * 0.6);
+            this.rice[i] = 0; // ruộng mới khô — phải tưới mới có lúa
+            void amount;
           }
         }
       }
@@ -230,8 +232,41 @@ export class TileMap {
     }
     return best;
   }
-  nearestShore(wx: number, wy: number, maxTiles = 48): { tx: number; ty: number; wtx: number; wty: number } | null {
+  /**
+   * Ruộng đang khát (chưa đầy): ô đứng kề bên gần nhất để tới tưới.
+   * Trả về {ô đứng} + {ô ruộng}.
+   */
+  nearestThirstyStand(
+    wx: number, wy: number, maxTiles = 48
+  ): { tx: number; ty: number; rtx: number; rty: number } | null {
     const stx = this.worldToTile(wx);
+    const sty = this.worldToTile(wy);
+    let best: { tx: number; ty: number; rtx: number; rty: number } | null = null;
+    let bestD = maxTiles * maxTiles;
+    for (let y = Math.max(0, sty - maxTiles); y <= Math.min(this.h - 1, sty + maxTiles); y++) {
+      for (let x = Math.max(0, stx - maxTiles); x <= Math.min(this.w - 1, stx + maxTiles); x++) {
+        const i = this.idx(x, y);
+        if (this.tiles[i] !== T_FIELD) continue;
+        if (this.rice[i] >= RICE_RIPE_AT) continue; // đầy/chín rồi, khỏi tưới
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const sx = x + dx;
+            const sy = y + dy;
+            if (!this.passable(sx, sy)) continue;
+            const d = (sx - stx) * (sx - stx) + (sy - sty) * (sy - sty);
+            if (d < bestD) {
+              bestD = d;
+              best = { tx: sx, ty: sy, rtx: x, rty: y };
+            }
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  nearestShore(wx: number, wy: number, maxTiles = 48): { tx: number; ty: number; wtx: number; wty: number } | null {    const stx = this.worldToTile(wx);
     const sty = this.worldToTile(wy);
     let best: { tx: number; ty: number; wtx: number; wty: number } | null = null;
     let bestD = maxTiles * maxTiles;
