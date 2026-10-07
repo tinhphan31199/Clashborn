@@ -4,7 +4,7 @@
  */
 import { BUILDING_DEFS, TILE, UNIT_DEFS } from "./data";
 import { T_GRASS, T_ORE, T_STONE, T_WATER, T_WOOD } from "./TileMap";
-import { fieldArt } from "./assets";
+import { fieldArt, unitFrames } from "./assets";
 import { Game, HUMAN } from "./Game";
 import { Interaction } from "./input";
 import { isExplored } from "./systems/fog";
@@ -267,24 +267,33 @@ function teamColor(game: Game, player: number): string {
 
 function drawUnit(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
   const def = UNIT_DEFS[e.defId];
-  const color = teamColor(game, e.player);
   const r = def?.radius ?? 9;
-  // vòng team
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(e.x, e.y, r + 2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#141414";
-  ctx.beginPath();
-  ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
-  ctx.fill();
-  // icon
-  ctx.font = `${Math.max(12, r)}px sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(UNIT_ICON[e.defId] ?? "•", e.x, e.y + 1);
-  ctx.textAlign = "left";
-  ctx.textBaseline = "alphabetic";
+  // Lính phe ta: sprite PixelLab đi bộ (đi mới chạy frames, đứng yên pose 0).
+  const frames = e.player === HUMAN ? unitFrames(e.defId) : [];
+  const ready = frames.length === 8 && frames.every((f) => f);
+  if (ready) {
+    const moving =
+      e.state === "moving" ||
+      e.state === "attackMoving" ||
+      e.state === "seekingResource" ||
+      e.state === "returning" ||
+      e.state === "patrolling";
+    const fi = moving ? Math.floor(game.world.time * 8) % 8 : 0;
+    const S = r * 2 + 10;
+    ctx.drawImage(frames[fi]!, e.x - S / 2, e.y - S / 2, S, S);
+  } else {
+    ctx.fillStyle = "#141414";
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    // icon
+    ctx.font = `${Math.max(12, r)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(UNIT_ICON[e.defId] ?? "•", e.x, e.y + 1);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+  }
   // worker đang gánh thì vẽ bao trên lưng
   const showCarry = e.kind === "unit" && e.defId === "worker" && e.carry > 0;
   if (showCarry) {
@@ -320,10 +329,6 @@ function drawNodeOrBase(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
     ctx.fillStyle = isBase ? "#52525b" : "#6b5a23";
     ctx.fillRect(px + 4, py + 4, wpx - 8, hpx - 8);
   }
-  // vòng chủ
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 3;
-  ctx.strokeRect(px - 2, py - 2, wpx + 4, hpx + 4);
 
   ctx.font = `${isBase ? 34 : 22}px sans-serif`;
   ctx.textAlign = "center";

@@ -75,6 +75,15 @@ export default function GameView({
   const [menuOpen, setMenuOpen] = useState(false);
   // Mobile: War Council gọn trong nút 🧭; desktop luôn hiện.
   const [councilOpen, setCouncilOpen] = useState(false);
+  // Toast mô tả lính khi giữ lâu trên mobile (thay tooltip chuột).
+  const [descToast, setDescToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
+
+  const showDesc = (text: string) => {
+    setDescToast(text);
+    if (toastTimer.current != null) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setDescToast(null), 2500);
+  };
   const wasPaused = useRef(false);
   const [hud, setHud] = useState<HudState | null>(null);
 
@@ -724,12 +733,19 @@ export default function GameView({
           </div>
         )}
 
+        {/* toast mô tả lính (giữ lâu nút thả lính trên mobile) */}
+        {descToast && (
+          <div className="absolute bottom-32 left-1/2 z-10 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-xl border border-amber-300/50 bg-zinc-900 px-3 py-2 text-center text-xs text-zinc-200 shadow-xl md:bottom-36">
+            {descToast}
+          </div>
+        )}
+
         {/* spawn bar — quyết định duy nhất của "vị tướng" */}
-        <div className="absolute bottom-2 left-1/2 max-w-[calc(100vw-1rem)] -translate-x-1/2 overflow-x-auto rounded-lg bg-zinc-900/90 p-2 md:bottom-3">
-          <div className="mb-1 hidden text-center text-[11px] uppercase tracking-wider text-zinc-400 sm:block">
+        <div className="absolute inset-x-2 bottom-2 rounded-2xl border border-white/10 bg-zinc-900/90 p-2 shadow-2xl backdrop-blur md:inset-x-auto md:bottom-3 md:left-1/2 md:w-auto md:-translate-x-1/2">
+          <div className="mb-1.5 hidden text-center text-[11px] uppercase tracking-wider text-zinc-400 sm:block">
             Thả lính — lính tự đánh (phím 1-4)
           </div>
-          <div className="flex w-max gap-2">
+          <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
             {SPAWN_ORDER.map((id, i) => {
               const def = UNIT_DEFS[id];
               const afford =
@@ -745,16 +761,36 @@ export default function GameView({
                 <button
                   key={id}
                   onClick={() => spawn(id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    showDesc(`${def.icon} ${def.name}: ${def.description}`);
+                  }}
                   disabled={!ok}
                   title={def.description}
-                  className={`min-h-[52px] w-24 shrink-0 rounded border px-2 py-1.5 text-left text-xs sm:w-28 ${
+                  className={`flex min-h-[68px] flex-col items-center justify-center gap-0.5 rounded-xl border px-1 py-1.5 transition-transform active:scale-95 sm:min-h-[76px] ${
                     ok
-                      ? "border-zinc-600 bg-zinc-800 hover:border-amber-300"
-                      : "border-zinc-800 bg-zinc-900 opacity-40"
+                      ? "border-amber-300/60 bg-zinc-800 shadow-[0_0_10px_rgba(251,191,36,0.15)]"
+                      : "border-zinc-800 bg-zinc-900 opacity-45"
                   }`}
                 >
-                  <div className="font-semibold">{def.icon} {def.name} <span className="text-zinc-500">[{i + 1}]</span></div>
-                  <div className="text-amber-300">{costStr.join(" ")} · 👥 {def.supply}</div>
+                  <img
+                    src={`/menu/unit-${id}-walk.gif`}
+                    alt={def.name}
+                    width={40}
+                    height={40}
+                    style={{ imageRendering: "pixelated" }}
+                    onError={(e) => {
+                      const span = document.createElement("span");
+                      span.textContent = def.icon;
+                      span.className = "text-2xl leading-none sm:text-[26px]";
+                      e.currentTarget.replaceWith(span);
+                    }}
+                  />
+                  <span className="text-[11px] font-semibold leading-tight">
+                    {def.name} <span className="hidden text-zinc-500 sm:inline">[{i + 1}]</span>
+                  </span>
+                  <span className="text-[10px] leading-tight text-amber-300">{costStr.join(" ")}</span>
+                  <span className="text-[10px] leading-tight text-zinc-500">👥{def.supply}</span>
                 </button>
               );
             })}

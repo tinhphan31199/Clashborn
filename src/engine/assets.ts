@@ -23,6 +23,16 @@ const cache: FieldArt = {
 
 let started = false;
 
+// Frames đi bộ của lính phe ta (8 frames mỗi loại, vẽ theo nhịp game).
+const UNIT_IDS = ["worker", "soldier", "archer", "tank"] as const;
+const unitCache: Record<string, (HTMLImageElement | null)[]> = {
+  worker: [],
+  soldier: [],
+  archer: [],
+  tank: [],
+};
+let unitsStarted = false;
+
 function loadOne(key: keyof FieldArt, src: string) {
   const img = new Image();
   img.onload = () => {
@@ -46,4 +56,26 @@ export function fieldArt(): FieldArt {
     loadOne("base", "/assets/base.png");
   }
   return cache;
+}
+
+/** 8 frames đi bộ của 1 loại lính (rỗng cho tới khi tải xong từng frame). */
+export function unitFrames(defId: string): (HTMLImageElement | null)[] {
+  if (typeof window === "undefined") return [];
+  if (!unitsStarted) {
+    unitsStarted = true;
+    for (const id of UNIT_IDS) {
+      for (let i = 0; i < 8; i++) {
+        const img = new Image();
+        const slot = unitCache[id];
+        img.onload = () => {
+          slot[i] = img;
+        };
+        img.onerror = () => {
+          /* frame lỗi → drawUnit rớt về emoji */
+        };
+        img.src = `/assets/units/${id}/${i}.png`;
+      }
+    }
+  }
+  return unitCache[defId] ?? [];
 }
