@@ -92,7 +92,7 @@ function rolesTick(world: World) {
 function reassignable(world: World, u: Entity): boolean {
   if (u.state === "idle" || u.state === "gathering" || u.state === "seekingResource") return true;
   if (u.state === "moving" && u.path.length === 0) return true; // spawn mới / chạy xong
-  // moving có path: chạy giặc hay đi rally → kiểm tra còn giặc không
+  // moving có path: đang chạy giặc → kiểm tra còn giặc không
   const threat = world.nearestEnemy(u.x, u.y, u.player, 6 * TILE);
   return !threat;
 }

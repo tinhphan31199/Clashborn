@@ -1,6 +1,6 @@
 /**
  * Game — AUTO-BATTLER edition.
- * Người chơi & AI chỉ spawnUnit + setRally. Mọi unit tự đánh (autoTick).
+ * Người chơi & AI chỉ spawnUnit + setDirective. Mọi unit tự đánh (autoTick).
  *
  * Vòng lặp: auto → movement → combat → economy → fog → sudden death → win.
  */
@@ -90,12 +90,6 @@ export class Game {
     this.place("node_mid", -1, MAP_W - 34 - 2, MAP_H - 42 - 2);
     this.place("node_center", -1, cx - 1, cy - 1);
 
-    // Rally mặc định ra giữa.
-    w.player(HUMAN).rallyX = cx * TILE;
-    w.player(HUMAN).rallyY = cy * TILE;
-    w.player(AI_PLAYER).rallyX = cx * TILE;
-    w.player(AI_PLAYER).rallyY = cy * TILE;
-
     // Mở đầu mỗi bên 1 worker để nhìn là hiểu ngay.
     this.spawnStarter(HUMAN);
     this.spawnStarter(AI_PLAYER);
@@ -152,17 +146,11 @@ export class Game {
         payCost(pl, def);
         const s = w.findSpawnNear(base.x, base.y - 3 * TILE);
         const u = w.spawnUnit(cmd.unitDefId, cmd.player, s.x, s.y);
-        // Quân mới đi ra rally rồi mới nhập cuộc (cảm giác "xuất quân").
-        u.state = "moving";
+        // Quân mới tự ra mặt trận (auto-brain lái từ tick sau).
+        u.state = "idle";
         u.path = [];
         u.repathTimer = 0;
         w.recomputeSupply();
-        break;
-      }
-      case "setRally": {
-        const pl = w.player(cmd.player);
-        pl.rallyX = cmd.x;
-        pl.rallyY = cmd.y;
         break;
       }
       case "setDirective": {

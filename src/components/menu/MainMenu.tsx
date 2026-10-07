@@ -167,9 +167,9 @@ export default function MainMenu({
         <details className="rounded-xl border border-zinc-800 bg-zinc-900/70">
           <summary className="cursor-pointer px-3 py-3 text-sm font-semibold">📱 Chơi trên điện thoại</summary>
           <div className="px-3 pb-3 text-xs leading-6 text-zinc-300">
-            <div>👆 <b>Chạm</b> map = đặt 🚩 rally · ✋ <b>kéo</b> = di map</div>
+            <div>👆 <b>Chạm</b> map = xem lính · ✋ <b>kéo</b> = di map</div>
             <div>⏱ <b>Giữ</b> = xem lính · 🤏 <b>chụm</b> = zoom</div>
-            <div>🖱️ <b>Máy tính:</b> 1–4 thả lính · R rally · Space dừng · Esc menu</div>
+            <div>🖱️ <b>Máy tính:</b> 1–4 thả lính · Space dừng · Esc menu</div>
           </div>
         </details>
       </div>

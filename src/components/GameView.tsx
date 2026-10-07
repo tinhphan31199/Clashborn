@@ -27,7 +27,6 @@ interface HudState {
   phase: GamePhase;
   time: number;
   suddenDeath: boolean;
-  rallyMode: boolean;
   paused: boolean;
   speed: number;
   blueBase: number;
@@ -298,7 +297,6 @@ export default function GameView({
       }
       if (menuOpen) return;
       if (k === " ") game.paused = !game.paused;
-      else if (k === "r") ui.rallyMode = !ui.rallyMode;
       else if (k === "1") game.dispatch({ type: "spawnUnit", player: HUMAN, unitDefId: "worker" });
       else if (k === "2") game.dispatch({ type: "spawnUnit", player: HUMAN, unitDefId: "soldier" });
       else if (k === "3") game.dispatch({ type: "spawnUnit", player: HUMAN, unitDefId: "archer" });
@@ -322,8 +320,9 @@ export default function GameView({
 
   // ------------------------------------------------- touch (mobile)
   // Triết lý mobile: game auto-battler không micro nên
-  //  CHẠM = đặt rally (hành động chính) · KÉO = di camera ·
+  //  CHẠM = xem lính · KÉO = di camera ·
   //  GIỮ = xem thông tin lính · PINCH = zoom.
+  // Quân spawn ra tự ra mặt trận, không cần đặt điểm tập kết.
   const touchState = useRef<{
     mode: "maybe-tap" | "pan" | "pinch";
     startX: number;
@@ -344,8 +343,11 @@ export default function GameView({
     }
   };
 
-  const setRallyAt = (x: number, y: number) => {
-    gameRef.current!.dispatch({ type: "setRally", player: HUMAN, x, y });
+  const selectAt = (x: number, y: number) => {
+    const game = gameRef.current!;
+    const ui = uiRef.current!;
+    const hit = ui.pickAt(game, x, y);
+    ui.selection = new Set(hit ? [hit.id] : []);
     buzz(10);
   };
 
@@ -461,13 +463,13 @@ export default function GameView({
     touchState.current = null;
     clearTouchTimer();
     if (!st || st.mode !== "maybe-tap" || st.longPressFired) return;
-    // Chạm nhanh không kéo = đặt rally ngay.
+    // Chạm nhanh không kéo = xem lính tại điểm đó.
     if (performance.now() - st.startTime > 600) return;
     const ui = uiRef.current!;
     const rect = canvasRef.current!.getBoundingClientRect();
     const t = e.changedTouches[0];
     const w = ui.screenToWorld(t.clientX - rect.left, t.clientY - rect.top, rect.width, rect.height);
-    setRallyAt(w.x, w.y);
+    selectAt(w.x, w.y);
   };
 
   // -------------------------------------------------------------- minimap
@@ -551,13 +553,6 @@ export default function GameView({
             onClick={() => setCouncilOpen((v) => !v)}
           >
             🧭
-          </button>
-          <button
-            className="hidden whitespace-nowrap rounded bg-zinc-700 px-2 py-1 hover:bg-zinc-600 md:block"
-            title="Đặt rally (R) — quân mới đi qua đó. Trên điện thoại: chạm thẳng vào map."
-            onClick={() => { uiRef.current!.rallyMode = !uiRef.current!.rallyMode; }}
-          >
-            🚩 {hud?.rallyMode ? "Chọn điểm…" : "Rally"}
           </button>
           <button
             className="whitespace-nowrap rounded bg-zinc-700 px-2.5 py-1.5 hover:bg-zinc-600 md:py-1"
@@ -796,7 +791,7 @@ export default function GameView({
             })}
           </div>
           <div className="mt-1 hidden text-center text-[11px] text-zinc-500 sm:block">
-            Chuột phải / 🚩 Rally để chọn khu vực xuất quân — lính không cần điều khiển
+            Quân spawn ra tự ra mặt trận — tướng chỉ lo thả lính và chỉnh War Council
           </div>
         </div>
 
@@ -867,16 +862,17 @@ export default function GameView({
             <div className="max-h-[86dvh] w-[calc(100vw-2rem)] max-w-lg overflow-y-auto rounded-xl bg-zinc-900 p-4 sm:p-6 text-sm leading-7" onClick={(e) => e.stopPropagation()}>
               <h2 className="mb-2 text-lg font-bold">🎮 Bạn không đánh nhau — bạn quyết định ai được đánh</h2>
               <ul className="list-disc pl-5 text-zinc-300">
-                <li><b>1-4 / click</b>: thả 👷 Worker (30) ⚔️ Soldier (50) 🏹 Archer (70) 🛡️ Tank (120)</li>
-                <li><b>Chuột phải / R</b>: đặt 🚩 rally — quân mới đi qua đó (chọn hướng đánh)</li>
-                <li><b>🧭 War Council</b> (góc trái): kéo Kinh tế↔Quân sự, Thủ↔Công, chọn trọng tâm 💎, bật 🤖 auto-chi tiêu</li>
-                <li><b>💧 Nước</b>: node ra nước, quân uống nước mỗi giây — hết nước yếu 30%. Quân đông thì giữ nhiều node!</li>
+                <li><b>1-4 / click</b>: thả 👷 Worker (30💰) ⚔️ Soldier (50💰) 🏹 Archer (50💰+25🪵) 🛡️ Tank (100💰+50🪵+25🪨)</li>
+                <li>Quân spawn ra <b>tự ra mặt trận</b> — không cần đặt điểm tập kết</li>
+                <li><b>🧭 War Council</b>: kéo Kinh tế↔Quân sự, Thủ↔Công, chọn trọng tâm 💎, bấm <b>Cần 💰🪵🪨💧</b> để worker dồn qua, bật 🤖 auto-chi tiêu</li>
+                <li><b>🌲🪨</b> Worker tự đốn gỗ/đào đá gánh về — Archer cần gỗ, Tank cần gỗ + đá</li>
+                <li><b>💧 Nước</b>: worker gánh từ hồ về, quân uống mỗi giây — hết nước yếu 30%</li>
                 <li><b>Worker</b> tự chiếm 💎 (+5 gần / +10 giữa / +20 trung tâm), gặp địch tự chạy</li>
                 <li><b>Soldier</b> săn Worker địch · <b>Archer</b> rỉa Tank từ xa · <b>Tank</b> đi đầu chịu đòn</li>
                 <li><b>Population 20</b>: Tank chiếm 3 slot — đừng spam</li>
                 <li>Phá <b>🏰 Base địch (2000 HP)</b> để thắng · Sau <b>10 phút</b>: Sudden Death x2 gold + base mất máu</li>
                 <li><b>Space</b> dừng · <b>⚡</b> tăng tốc · <b>Esc</b> menu · kéo chuột xem quân · lăn chuột zoom</li>
-                <li>📱 <b>Điện thoại:</b> <b>chạm</b> map = đặt 🚩 rally · <b>kéo</b> 1 ngón = di map · <b>giữ</b> = xem lính · <b>chụm</b> 2 ngón = zoom · nút <b>⌂</b> = về base</li>
+                <li>📱 <b>Điện thoại:</b> <b>chạm</b> map = xem lính · <b>kéo</b> 1 ngón = di map · <b>chụm</b> 2 ngón = zoom · nút <b>⌂</b> = về base</li>
               </ul>
               <div className="mt-3 rounded bg-zinc-800 p-2 text-zinc-400">
                 Mở bài gợi ý: 👷👷 → ⚔️⚔️ giữ mỏ gần → 🏹 tranh giữa → 🛡️🛡️🏹🏹 push base.
@@ -924,7 +920,6 @@ function collectHud(game: Game, ui: Interaction): HudState {
     phase: game.phase,
     time: game.world.time,
     suddenDeath: game.suddenDeath,
-    rallyMode: ui.rallyMode,
     paused: game.paused,
     speed: game.speed,
     blueBase: Math.max(0, Math.ceil(hb?.hp ?? 0)),

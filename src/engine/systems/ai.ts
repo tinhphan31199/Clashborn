@@ -1,6 +1,6 @@
 /**
  * AIController — "tướng địch" chơi đúng luật như người:
- * chỉ được spawnUnit + setRally, không micro.
+ * chỉ được spawnUnit + setDirective, không micro.
  *
  * Chiến thuật:
  *  mở đầu 2 worker → soldier rush hoặc economy tùy rand
@@ -94,16 +94,12 @@ export class AIController {
       return true;
     };
 
-    // Đặt rally ra giữa khi đã có quân (trừ rush muốn thẳng base).
+    // Đặt hướng đánh theo tính cách (brain tự lo đường đi, không cần rally).
     if (army >= 3 && t > 60) {
-      const enemyBase = world.baseOf(me === 0 ? 1 : 0);
-      const cx = (world.map.w * TILE) / 2;
-      const cy = (world.map.h * TILE) / 2;
       const pl = world.player(me);
-      const gx = this.personality === "rush" && enemyBase ? enemyBase.x : cx;
-      const gy = this.personality === "rush" && enemyBase ? enemyBase.y : cy;
-      if (Math.hypot(pl.rallyX - gx, pl.rallyY - gy) > TILE * 3) {
-        dispatch({ type: "setRally", player: me, x: gx, y: gy });
+      const wantAtk = this.personality === "rush" ? 0.9 : 0.5;
+      if (Math.abs(pl.defAtk - wantAtk) > 0.2) {
+        dispatch({ type: "setDirective", player: me, defAtk: wantAtk });
       }
     }
 

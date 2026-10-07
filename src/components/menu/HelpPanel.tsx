@@ -73,8 +73,7 @@ export default function HelpPanel({ onBack, inGame }: { onBack: () => void; inGa
 
           <SectionTitle>⌨️ Điều khiển</SectionTitle>
           <div className="grid grid-cols-1 gap-x-4 text-sm leading-6 text-zinc-300 sm:grid-cols-2">
-            <div><b>1–4 / click:</b> thả lính</div>
-            <div><b>Chuột phải / R:</b> đặt 🚩 rally</div>
+            <div><b>1–4 / click:</b> thả lính (quân tự ra mặt trận)</div>
             <div><b>Space:</b> dừng / chạy</div>
             <div><b>Esc:</b> menu tạm dừng</div>
             <div><b>H:</b> mở cẩm nang này</div>

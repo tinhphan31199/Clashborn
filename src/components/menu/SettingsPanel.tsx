@@ -121,7 +121,7 @@ export default function SettingsPanel({
             }
           />
           <Row
-            label="Hiện lưới khi đặt rally"
+            label="Hiện lưới bản đồ"
             right={
               <button
                 onClick={() => set({ showGrid: !settings.showGrid })}

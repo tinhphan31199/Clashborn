@@ -1,6 +1,7 @@
 /**
- * Command — AUTO-BATTLER + WAR COUNCIL edition.
- * Người chơi không micro: chỉ spawn lính, đặt rally, chỉnh xu hướng.
+ * Command — AUTO-BATTLER edition.
+ * Người chơi không micro: spawn lính + chỉnh xu hướng War Council.
+ * Quân spawn ra tự ra mặt trận, không cần đặt điểm tập kết.
  */
 import { MapFocus, NeedWeights, PlayerId } from "./types";
 
@@ -15,7 +16,6 @@ export interface DirectivePatch {
 
 export type Command =
   | { type: "spawnUnit"; player: PlayerId; unitDefId: string }
-  | { type: "setRally"; player: PlayerId; x: number; y: number }
   | ({ type: "setDirective"; player: PlayerId } & DirectivePatch);
 
 /** Học thuyết 1 chạm: preset của War Council, đổi giữa trận được. */

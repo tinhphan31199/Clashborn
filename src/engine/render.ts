@@ -151,24 +151,6 @@ export function renderGame(
     else drawNodeOrBase(ctx, game, e);
   }
 
-  // --- rally của người chơi
-  const pl = world.players.find((p) => p.id === HUMAN);
-  if (pl) {
-    ctx.strokeStyle = "#ffffff";
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    const base = world.baseOf(HUMAN);
-    if (base) {
-      ctx.moveTo(base.x, base.y);
-      ctx.lineTo(pl.rallyX, pl.rallyY);
-      ctx.stroke();
-    }
-    ctx.setLineDash([]);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "14px sans-serif";
-    ctx.fillText("🚩", pl.rallyX - 7, pl.rallyY + 5);
-  }
-
   // --- projectiles
   for (const pr of world.projectiles) {
     ctx.fillStyle = pr.color;
@@ -251,12 +233,6 @@ export function renderGame(
     const ry = Math.min(a.y, b.y);
     ctx.fillRect(rx, ry, Math.abs(b.x - a.x), Math.abs(b.y - a.y));
     ctx.strokeRect(rx, ry, Math.abs(b.x - a.x), Math.abs(b.y - a.y));
-  }
-
-  if (ui.rallyMode) {
-    ctx.fillStyle = "#fff";
-    ctx.font = "13px sans-serif";
-    ctx.fillText("🚩 RALLY: click bản đồ để chọn khu vực xuất quân [right-click/Esc hủy]", 12, viewH - 12);
   }
 }
 
@@ -351,13 +327,6 @@ function drawNodeOrBase(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
     ctx.fillText(`+${def.income}/s`, px + wpx / 2, py + hpx + 13);
     ctx.textAlign = "left";
   }
-  if (isBase) {
-    ctx.fillStyle = "rgba(255,255,255,0.85)";
-    ctx.font = "10px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(`${e.hp}/${e.maxHp}`, px + wpx / 2, py + hpx + 13);
-    ctx.textAlign = "left";
-  }
 }
 
 function drawHealthBar(ctx: CanvasRenderingContext2D, wx: number, wy: number, e: Entity) {
@@ -405,12 +374,6 @@ export function renderMinimap(
     ctx.fillStyle = teamColor(game, e.player);
     const d = e.kind === "building" ? 4 : 2.5;
     ctx.fillRect((e.x / TILE) * s - d / 2, (e.y / TILE) * s - d / 2, d, d);
-  }
-  // rally
-  const pl = world.players.find((p) => p.id === HUMAN);
-  if (pl) {
-    ctx.fillStyle = "#fff";
-    ctx.fillRect((pl.rallyX / TILE) * s - 2, (pl.rallyY / TILE) * s - 2, 4, 4);
   }
   const cam = ui.camera;
   const halfW = viewW / 2 / cam.zoom / TILE * s;

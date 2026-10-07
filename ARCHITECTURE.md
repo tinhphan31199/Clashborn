@@ -57,7 +57,7 @@ AI (tướng đỏ) → auto (não từng lính) → movement → combat → eco
 
 ```ts
 game.dispatch({ type: "spawnUnit", player: 0, unitDefId: "archer" });
-game.dispatch({ type: "setRally", player: 0, x: 1024, y: 1024 }); // khu vực xuất quân
+// Quân spawn ra tự ra mặt trận — không còn điểm tập kết
 game.dispatch({ type: "setDirective", player: 0, ecoMil: 0.3, defAtk: 0.8, focus: "mid" });
 ```
 

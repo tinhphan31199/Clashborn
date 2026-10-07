@@ -7,7 +7,7 @@
  *  Archer:  đi sau soldier, bắn theo ưu tiên Tank > Soldier > Worker
  *  Tank:    đi đầu làm khiên, ủi thẳng
  *
- * Quân mới spawn đi ra điểm rally của phe trước khi nhập cuộc.
+ * Quân mới spawn tự ra mặt trận (không có điểm tập kết).
  */
 import { BUILDING_DEFS, TILE } from "../data";
 import { findPath } from "../astar";
@@ -131,7 +131,7 @@ function armyBrain(
   void dt;
   // Đang đánh → combat system lo. Brain chỉ lo khi rảnh.
   if (u.state === "attacking") return;
-  // Vừa spawn (idle tại base) → đi ra rally trước.
+  // Vừa spawn (idle tại base) → brain dưới tự đưa ra mặt trận.
   const pl = world.players.find((p) => p.id === u.player);
   const enemyBase = world.baseOf(u.player === 0 ? 1 : 0);
 
@@ -149,16 +149,11 @@ function armyBrain(
   const pushTime = 200 - defAtk * 140; // 200s … 60s
 
   // Tank đi đầu: tiến thẳng; Archer đi sau: tiến chậm hơn (giữ khoảng cách).
+  // Quân spawn ra đi thẳng mặt trận, không qua điểm tập kết.
   let dest = center;
   if (pl) {
-    const rallySet =
-      Math.hypot(pl.rallyX - center.x, pl.rallyY - center.y) > TILE * 2;
-    // Nếu rally khác trung tâm (người chơi đã chọn hướng), đi qua rally trước
-    // khi còn gần base.
     const base = world.baseOf(u.player);
-    if (base && rallySet && Math.hypot(u.x - base.x, u.y - base.y) < TILE * 14) {
-      dest = { x: pl.rallyX, y: pl.rallyY };
-    } else if (defAtk < 0.3 && base) {
+    if (defAtk < 0.3 && base) {
       // Thủ: giữ tuyến phòng ngự giữa base và trung tâm (trừ khi quân áp đảo).
       const armySize = world.unitsOf(u.player).filter((a) => a.defId !== "worker").length;
       if (armySize < 10) {

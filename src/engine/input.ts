@@ -1,8 +1,7 @@
 /**
  * Interaction — AUTO-BATTLER edition.
- * Người chơi KHÔNG điều khiển lính. Chỉ còn:
- *  camera (pan/zoom), xem quân (click chọn để đọc info),
- *  đặt rally (quân mới đi qua đó), box-select để ngắm đội hình.
+ * Người chơi KHÔNG điều khiển lính, KHÔNG đặt rally.
+ * Chỉ còn: camera (pan/zoom) + xem quân (click chọn để đọc info) + box-select.
  */
 import { TILE, UNIT_DEFS } from "./data";
 import { Game, HUMAN } from "./Game";
@@ -27,8 +26,6 @@ export class Interaction {
   edgePanEnabled = true;
   /** hệ số tốc độ camera (menu Cài đặt: 1..10 → 0.4..1.6) */
   panSpeed = 1;
-  /** bật/tắt chế độ đặt rally bằng click */
-  rallyMode = false;
 
   screenToWorld(sx: number, sy: number, viewW: number, viewH: number): Vec2 {
     const { x, y, zoom } = this.camera;
@@ -114,14 +111,6 @@ export class Interaction {
   }
 
   leftUp(game: Game, wx: number, wy: number, viewW: number, viewH: number) {
-    // Đặt rally: click đâu quân mới đi qua đó.
-    if (this.rallyMode) {
-      game.dispatch({ type: "setRally", player: HUMAN, x: wx, y: wy });
-      this.rallyMode = false;
-      this.dragStart = null;
-      this.dragNow = null;
-      return;
-    }
     if (this.dragStart && this.dragNow && this._moved) {
       const a = this.screenToWorld(this.dragStart.x, this.dragStart.y, viewW, viewH);
       const b = this.screenToWorld(this.dragNow.x, this.dragNow.y, viewW, viewH);
@@ -138,13 +127,12 @@ export class Interaction {
     this.dragNow = null;
   }
 
-  /** Right-click = đặt rally nhanh (không cần bật mode). */
-  rightDown(game: Game, wx: number, wy: number) {
-    game.dispatch({ type: "setRally", player: HUMAN, x: wx, y: wy });
+  /** Right-click: không làm gì (không còn rally). Giữ để khỏi vỡ input chuột phải. */
+  rightDown(_game: Game, _wx: number, _wy: number) {
+    // No-op.
   }
 
   cancelAll() {
-    this.rallyMode = false;
     this.dragStart = null;
     this.dragNow = null;
   }
