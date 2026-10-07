@@ -7,6 +7,7 @@
  *  3 = rừng 🌲 (cấm đi, đốn gỗ, có trữ lượng)
  *  4 = đá 🪨 (cấm đi, khai thác, có trữ lượng)
  *  5 = ruộng 🌾 (cấm đi, gặt lúa — lúa tự mọc lại)
+ *  6 = gốc cây (cấm đi, cây bị đốn sạch — 30s mọc lại thành cây)
  */
 import { TILE } from "./data";
 
@@ -16,6 +17,9 @@ export const T_ORE = 2;
 export const T_WOOD = 3;
 export const T_STONE = 4;
 export const T_FIELD = 5;
+export const T_STUMP = 6;
+/** Gốc cây mọc lại thành cây sau từng này giây. */
+export const STUMP_REGROW_TIME = 30;
 /** Lúa trên ô ruộng đạt mức này mới CHÍN VÀNG, gặt được. */
 export const RICE_RIPE_AT = 40;
 
@@ -30,6 +34,10 @@ export class TileMap {
   wood: Float32Array;
   stone: Float32Array;
   rice: Float32Array;
+  /** máu tối đa của cây (để vẽ HP bar) */
+  woodMax: Float32Array;
+  /** đếm ngược gốc cây mọc lại (chỉ nghĩa khi tiles == T_STUMP) */
+  stumpTimer: Float32Array;
   /** blocked by buildings per tile */
   blocked: Uint8Array;
 
@@ -41,6 +49,8 @@ export class TileMap {
     this.wood = new Float32Array(w * h);
     this.stone = new Float32Array(w * h);
     this.rice = new Float32Array(w * h);
+    this.woodMax = new Float32Array(w * h);
+    this.stumpTimer = new Float32Array(w * h);
     this.blocked = new Uint8Array(w * h);
   }
 
@@ -66,7 +76,7 @@ export class TileMap {
     if (!this.inBounds(tx, ty)) return false;
     const i = this.idx(tx, ty);
     const t = this.tiles[i];
-    return t !== T_WATER && t !== T_WOOD && t !== T_STONE && t !== T_FIELD && this.blocked[i] === 0;
+    return t !== T_WATER && t !== T_WOOD && t !== T_STONE && t !== T_FIELD && t !== T_STUMP && this.blocked[i] === 0;
   }
 
   worldToTile(wx: number): number {
@@ -93,6 +103,8 @@ export class TileMap {
         this.wood[i] = 0;
         this.stone[i] = 0;
         this.rice[i] = 0;
+        this.woodMax[i] = 0;
+        this.stumpTimer[i] = 0;
       }
     }
   }
@@ -120,7 +132,9 @@ export class TileMap {
           const i = this.idx(x, y);
           if (this.tiles[i] === T_GRASS) {
             this.tiles[i] = T_WOOD;
-            this.wood[i] = amount * (0.7 + rand() * 0.6);
+            const full = amount * (0.7 + rand() * 0.6);
+            this.wood[i] = full;
+            this.woodMax[i] = full;
           }
         }
       }

@@ -176,6 +176,9 @@ export class World {
             map.tiles[i] = 0;
             map.wood[i] = 0;
             map.stone[i] = 0;
+            map.rice[i] = 0;
+            map.woodMax[i] = 0;
+            map.stumpTimer[i] = 0;
           }
         }
       };
@@ -551,6 +554,8 @@ export class World {
         wood: Array.from(this.map.wood),
         stone: Array.from(this.map.stone),
         rice: Array.from(this.map.rice),
+        woodMax: Array.from(this.map.woodMax),
+        stumpTimer: Array.from(this.map.stumpTimer),
         blocked: Array.from(this.map.blocked),
       },
     });
@@ -574,6 +579,8 @@ export class World {
       if (d.map.wood) w.map.wood.set(d.map.wood);
       if (d.map.stone) w.map.stone.set(d.map.stone);
       if (d.map.rice) w.map.rice.set(d.map.rice);
+      if (d.map.woodMax) w.map.woodMax.set(d.map.woodMax);
+      if (d.map.stumpTimer) w.map.stumpTimer.set(d.map.stumpTimer);
       w.map.blocked.set(d.map.blocked);
     }
     w.rebuildSpatial();

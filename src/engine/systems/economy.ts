@@ -5,7 +5,7 @@
  *  Phân vai worker theo Nhu cầu (needs) của War Council mỗi tick.
  */
 import { BUILDING_DEFS, TILE, UNIT_DEFS } from "../data";
-import { RICE_RIPE_AT, T_FIELD, T_GRASS, T_STONE, T_WATER, T_WOOD } from "../TileMap";
+import { RICE_RIPE_AT, STUMP_REGROW_TIME, T_FIELD, T_GRASS, T_STONE, T_STUMP, T_WATER, T_WOOD } from "../TileMap";
 import { findPath } from "../astar";
 import { Entity, NeedWeights, WorkerJob } from "../types";
 import { World } from "../World";
@@ -65,7 +65,7 @@ export function economyTick(world: World, dt: number) {
   incomeTick(world, dt);
 }
 
-/** Lúa mọc lại: ruộng đã gặt hồi dần tới trần — khác rừng/đá hết là hết.
+/** Hồi phục map: lúa mọc lại + gốc cây mọc thành cây.
  *  Lúa CHÍN VÀNG (rice >= ngưỡng chín) mới gặt được, còn xanh thì chờ. */
 export const REGROW_RATE = 1.2;
 export const REGROW_CAP = 60;
@@ -76,8 +76,18 @@ export function isRipe(rice: number): boolean {
 function regrowTick(world: World, dt: number) {
   const { map } = world;
   for (let i = 0; i < map.tiles.length; i++) {
-    if (map.tiles[i] !== T_FIELD) continue;
-    if (map.rice[i] < REGROW_CAP) map.rice[i] = Math.min(REGROW_CAP, map.rice[i] + REGROW_RATE * dt);
+    const t = map.tiles[i];
+    if (t === T_FIELD) {
+      if (map.rice[i] < REGROW_CAP) map.rice[i] = Math.min(REGROW_CAP, map.rice[i] + REGROW_RATE * dt);
+    } else if (t === T_STUMP) {
+      map.stumpTimer[i] -= dt;
+      if (map.stumpTimer[i] <= 0) {
+        // Mọc lại thành cây đầy máu.
+        map.tiles[i] = T_WOOD;
+        map.wood[i] = map.woodMax[i] > 0 ? map.woodMax[i] : 100;
+        map.stumpTimer[i] = 0;
+      }
+    }
   }
 }
 
@@ -353,8 +363,12 @@ function gatherAt(world: World, u: Entity, res: WorkerJob, dt: number) {
     if (store[i] <= 0) {
       if (res === "food") {
         // Ruộng gặt sạch vẫn là ruộng — lúa mọc lại sau (xem regrowTick).
+      } else if (res === "wood") {
+        // Cây đổ → còn cái gốc, 30s mọc lại (xem regrowTick).
+        world.map.tiles[i] = T_STUMP;
+        world.map.stumpTimer[i] = STUMP_REGROW_TIME;
       } else {
-        world.map.tiles[i] = T_GRASS; // đốn sạch → cỏ
+        world.map.tiles[i] = T_GRASS; // đá hết → cỏ
       }
     }
   }

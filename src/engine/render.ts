@@ -3,7 +3,7 @@
  * Vẽ base 🏰, node 💎 (vòng chủ + income), lính bằng icon + vòng team.
  */
 import { BUILDING_DEFS, TILE, UNIT_DEFS } from "./data";
-import { RICE_RIPE_AT, T_FIELD, T_GRASS, T_ORE, T_STONE, T_WATER, T_WOOD } from "./TileMap";
+import { RICE_RIPE_AT, T_FIELD, T_GRASS, T_ORE, T_STONE, T_STUMP, T_WATER, T_WOOD } from "./TileMap";
 import { fieldArt, unitFrames } from "./assets";
 import { Game, HUMAN } from "./Game";
 import { Interaction } from "./input";
@@ -91,6 +91,16 @@ export function renderGame(
           ctx.fillStyle = "#5b3a1e";
           ctx.fillRect(cxp - 1, cyp + 4, 3, 6);
         }
+        // Thanh máu của cây: đầy thì ẩn, bị chặt thì hiện.
+        const wMax = map.woodMax[map.idx(tx, ty)];
+        const wHp = map.wood[map.idx(tx, ty)];
+        if (wMax > 0 && wHp < wMax) {
+          const pct = Math.max(0, wHp / wMax);
+          ctx.fillStyle = "rgba(0,0,0,0.7)";
+          ctx.fillRect(px + 4, py + 2, TILE - 8, 4);
+          ctx.fillStyle = pct > 0.5 ? "#4ade80" : pct > 0.25 ? "#fbbf24" : "#ef4444";
+          ctx.fillRect(px + 4, py + 2, (TILE - 8) * pct, 4);
+        }
       } else if (t === T_STONE) {
         ctx.fillStyle = "#4b4b4b";
         ctx.fillRect(px, py, TILE, TILE);
@@ -103,6 +113,22 @@ export function renderGame(
         ctx.lineTo(px + 22 + ox * 0.5, py + 22);
         ctx.closePath();
         ctx.fill();
+      } else if (t === T_STUMP) {
+        // Gốc cây bị đốn: cỏ lót + sprite gốc (fallback vẽ tay).
+        if (art.grass) {
+          ctx.drawImage(art.grass, px, py, TILE, TILE);
+        } else {
+          ctx.fillStyle = "#2d5a27";
+          ctx.fillRect(px, py, TILE, TILE);
+        }
+        if (art.stump) {
+          ctx.drawImage(art.stump, px - 16, py - 32, 64, 64);
+        } else {
+          ctx.fillStyle = "#6e4f2a";
+          ctx.fillRect(px + 9, py + 16, 14, 12);
+          ctx.fillStyle = "#d6b478";
+          ctx.fillRect(px + 9, py + 14, 14, 4);
+        }
       } else if (t === T_FIELD) {
         // Ruộng lúa: sprite PixelLab, chưa tải xong thì vẽ luống fallback.
         // Xanh = lúa non (chưa gặt được) · vàng óng = lúa chín (gặt được).
@@ -392,6 +418,7 @@ export function renderMinimap(
         if (t === T_WOOD) ctx.fillStyle = "#2d5a27";
         else if (t === T_STONE) ctx.fillStyle = "#6b6b6b";
         else if (t === T_FIELD) ctx.fillStyle = "#8a7a3a";
+        else if (t === T_STUMP) ctx.fillStyle = "#5a4a28";
         else ctx.fillStyle = "#2c5a2a";
       }
       ctx.fillRect(tx * s, ty * s, Math.ceil(s), Math.ceil(s));
