@@ -2,7 +2,8 @@
  * Game — AUTO-BATTLER edition.
  * Người chơi & AI chỉ spawnUnit + setDirective. Mọi unit tự đánh (autoTick).
  *
- * Vòng lặp: auto → movement → combat → economy → fog → sudden death → win.
+ * Vòng lặp: agents (AI + overseer ra lệnh) → construction → auto → movement
+ * → combat → economy → fog → sudden death → win.
  */
 import { Command } from "./commands";
 import { resetPathBudget } from "./astar";
@@ -12,7 +13,10 @@ import { autoTick } from "./systems/auto";
 import { combatTick } from "./systems/combat";
 import { constructionTick } from "./systems/construction";
 import { economyTick, suddenDeathActive } from "./systems/economy";
+import { overseerTick } from "./systems/overseer";
 import { fogTick } from "./systems/fog";
+import { monsterTick } from "./systems/monster";
+import { directorTick } from "./systems/monsterDirector";
 import { movementTick } from "./systems/movement";
 import { Entity, GamePhase, PlayerId, PlayerState } from "./types";
 import { MAP_H, MAP_W, World } from "./World";
@@ -73,24 +77,39 @@ export class Game {
 
     // Dọn địa hình quanh base/node trước để không kẹt nước/rừng.
     for (const [tx, ty, r] of [
-      [10, 8, 6], [MAP_W - 10 - 4, MAP_H - 8 - 4, 6],
-      [20, 20, 5], [MAP_W - 20 - 2, MAP_H - 20 - 2, 5],
-      [34, 42, 5], [MAP_W - 34 - 2, MAP_H - 42 - 2, 5],
-      [cx - 1, cy - 1, 5],
+      [20, 16, 12], [MAP_W - 20 - 4, MAP_H - 16 - 4, 12],
+      [40, 40, 10], [MAP_W - 40 - 2, MAP_H - 40 - 2, 10],
+      [68, 84, 10], [MAP_W - 68 - 2, MAP_H - 84 - 2, 10],
+      [cx - 1, cy - 1, 10],
     ] as const) {
       w.map.clearArea(tx + 2, ty + 1, r);
     }
 
-    // Base hai đầu map 96.
-    this.place("base", HUMAN, 10, 8);
-    this.place("base", AI_PLAYER, MAP_W - 10 - 4, MAP_H - 8 - 4);
+    // Base hai đầu map 192.
+    this.place("base", HUMAN, 20, 16);
+    this.place("base", AI_PLAYER, MAP_W - 20 - 4, MAP_H - 16 - 4);
 
     // 5 node vàng: 2 gần mỗi bên + 2 trung gian + 1 trung tâm.
-    this.place("node_near", -1, 20, 20);
-    this.place("node_near", -1, MAP_W - 20 - 2, MAP_H - 20 - 2);
-    this.place("node_mid", -1, 34, 42);
-    this.place("node_mid", -1, MAP_W - 34 - 2, MAP_H - 42 - 2);
+    this.place("node_near", -1, 40, 40);
+    this.place("node_near", -1, MAP_W - 40 - 2, MAP_H - 40 - 2);
+    this.place("node_mid", -1, 68, 84);
+    this.place("node_mid", -1, MAP_W - 68 - 2, MAP_H - 84 - 2);
     this.place("node_center", -1, cx - 1, cy - 1);
+
+    // Sân dirt quanh base + quanh các mỏ (chỉ lên ô cỏ trống).
+    w.map.paintPlaza(22, 18, 12, 12);
+    w.map.paintPlaza(74, 78, 12, 12);
+    w.map.paintPlaza(41, 41, 8, 8);
+    w.map.paintPlaza(55, 55, 8, 8);
+    w.map.paintPlaza(69, 85, 8, 8);
+    w.map.paintPlaza(27, 11, 8, 8);
+    w.map.paintPlaza(48, 48, 10, 10);
+
+    // Đường dirt base→mỏ→trung tâm (chỉ lên ô cỏ trống, đối xứng 2 phe).
+    w.map.paintRoad([{ tx: 22, ty: 18 }, { tx: 41, ty: 41 }, { tx: 48, ty: 48 }]);
+    w.map.paintRoad([{ tx: 69, ty: 85 }, { tx: 48, ty: 48 }]);
+    w.map.paintRoad([{ tx: 74, ty: 78 }, { tx: 55, ty: 55 }, { tx: 48, ty: 48 }]);
+    w.map.paintRoad([{ tx: 27, ty: 11 }, { tx: 48, ty: 48 }]);
 
     // Mở đầu mỗi bên 1 worker để nhìn là hiểu ngay.
     this.spawnStarter(HUMAN);
@@ -242,12 +261,15 @@ export class Game {
     resetPathBudget(); // mở quota A* mới cho tick này (chống giật trận đông)
     w.rebuildSpatial();
     this.ai.update(w, (c) => this.dispatch(c), dt);
+    overseerTick(w, (c) => this.dispatch(c)); // agent ra lệnh trước, systems thi hành sau
     // Xây dựng trước chi tiêu: hạ tầng (nhà/farm) được giữ gỗ trước khi mua lính.
     constructionTick(w, dt);
     this.autoSpendTick(w, dt);
     autoTick(w, dt);
     movementTick(w, dt);
     combatTick(w, dt);
+    monsterTick(w);
+    directorTick(w, dt);
     economyTick(w, dt);
     fogTick(w);
     for (let i = w.effects.length - 1; i >= 0; i--) {

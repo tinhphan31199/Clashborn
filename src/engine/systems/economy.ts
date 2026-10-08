@@ -8,6 +8,8 @@ import { BUILDING_DEFS, TILE, UNIT_DEFS } from "../data";
 import { RICE_RIPE_AT, STUMP_REGROW_TIME, T_APPLE, T_FIELD, T_GRASS, T_STONE, T_STUMP, T_WATER, T_WOOD } from "../TileMap";
 import { findPath } from "../astar";
 import { finishedBuildings } from "./construction";
+import { getPlan } from "./overseer";
+import { issueOrder } from "./workOrders";
 import { Entity, NeedWeights, WorkerJob } from "../types";
 import { World } from "../World";
 
@@ -118,11 +120,20 @@ function rolesTick(world: World) {
     const sum = wts[0] + wts[1] + wts[2] + wts[3];
     const jobs: WorkerJob[] = ["wood", "stone", "water", "food"];
     const desired: Record<WorkerJob, number> = { node: 0, wood: 0, stone: 0, water: 0, food: 0 };
-    desired.node = Math.min(nodeTarget, workers.length);
-    if (sum === 0) {
+    const plan = getPlan(world, pl.id);
+    if (plan) {
+      // Quan đốc công vừa ra lệnh (< 30s) → thi hành chỉ tiêu của nó.
+      // Kẹp theo quân số hiện tại (có thợ chết giữa chừng thì thôi).
+      let remaining = workers.length;
+      for (const j of ["node", "wood", "stone", "water", "food"] as WorkerJob[]) {
+        desired[j] = Math.min(Math.max(0, plan.quotas[j] ?? 0), remaining);
+        remaining -= desired[j];
+      }
+    } else if (sum === 0) {
       // Không cần gì → tất cả giữ mỏ cho có việc.
       desired.node = workers.length;
     } else {
+      desired.node = Math.min(nodeTarget, workers.length);
       let assigned = 0;
       const order = [0, 1, 2, 3].sort((a, b) => wts[b] - wts[a]);
       for (const i of order) {
@@ -166,10 +177,7 @@ function rolesTick(world: World) {
       if (want && want !== u.job) {
         count[u.job]--;
         count[want]++;
-        u.job = want;
-        u.state = "idle";
-        u.path = [];
-        u.targetId = null;
+        issueOrder(world, u, { kind: "takeJob", job: want });
       }
     }
   }
@@ -233,6 +241,7 @@ function captureTick(world: World) {
 function tripsTick(world: World, dt: number) {
   for (const u of world.entities.values()) {
     if (u.kind !== "unit" || u.defId !== "worker") continue;
+    if (u.state === "repairing") continue; // thợ đang xây do constructionTick sở hữu
     if (u.job === "node") continue;
     // Lúa: 2 việc trong 1 (tưới 3 gáo cho chín → gặt), lái riêng.
     if (u.job === "food") {
@@ -348,38 +357,30 @@ function goReturnFood(world: World, u: Entity) {
     return;
   }
   const near = nearestDrop(drops, u.x, u.y);
-  u.state = "returning";
-  const p = findPath(world.map, u.x, u.y, near.x, near.y);
-  u.path = p ?? [];
+  issueOrder(world, u, { kind: "returnTo", x: near.x, y: near.y });
 }
 
 function goRipeField(world: World, u: Entity): boolean {
   const spot = world.map.nearestHarvestStand(u.x, u.y, T_FIELD, 48);
   if (!spot) return false;
-  const p = findPath(
-    world.map, u.x, u.y,
-    world.map.tileToWorldCenter(spot.tx), world.map.tileToWorldCenter(spot.ty)
-  );
-  if (!p || p.length === 0) return false;
-  u.targetX = spot.rtx;
-  u.targetY = spot.rty;
-  u.state = "seekingResource";
-  u.path = p;
+  issueOrder(world, u, {
+    kind: "seekTile",
+    x: world.map.tileToWorldCenter(spot.tx), y: world.map.tileToWorldCenter(spot.ty),
+    tx: spot.rtx, ty: spot.rty,
+  });
+  if (u.path.length === 0) return false;
   return true;
 }
 
 function goThirstyField(world: World, u: Entity): boolean {
   const spot = world.map.nearestThirstyStand(u.x, u.y, 48);
   if (!spot) return false;
-  const p = findPath(
-    world.map, u.x, u.y,
-    world.map.tileToWorldCenter(spot.tx), world.map.tileToWorldCenter(spot.ty)
-  );
-  if (!p || p.length === 0) return false;
-  u.targetX = spot.rtx;
-  u.targetY = spot.rty;
-  u.state = "seekingResource";
-  u.path = p;
+  issueOrder(world, u, {
+    kind: "seekTile",
+    x: world.map.tileToWorldCenter(spot.tx), y: world.map.tileToWorldCenter(spot.ty),
+    tx: spot.rtx, ty: spot.rty,
+  });
+  if (u.path.length === 0) return false;
   return true;
 }
 
@@ -569,6 +570,15 @@ function nearestDrop(drops: Drop[], x: number, y: number): Drop {
   return best;
 }
 
+/** Điểm nộp gần nhất của phe (có farm thì chỉ farm, chưa có mới về base). */
+export function nearestDropoff(
+  world: World, player: number, x: number, y: number
+): { x: number; y: number } | null {
+  const drops = dropoffs(world, player);
+  if (drops.length === 0) return null;
+  return nearestDrop(drops, x, y);
+}
+
 function deposit(world: World, u: Entity, res: WorkerJob) {
   const pl = world.player(u.player);
   // Nộp khi có trang trại: +25% sản lượng (gỗ/đá/nước/lúa).
@@ -684,19 +694,16 @@ export function sendToSource(world: World, u: Entity, res: WorkerJob) {
       u.repathTimer = 2;
       return;
     }
-    const p0 = findPath(
-      world.map, u.x, u.y,
-      world.map.tileToWorldCenter(shore.tx), world.map.tileToWorldCenter(shore.ty)
-    );
-    if ((!p0 || p0.length === 0) && !nearTile(world, u, shore.wtx, shore.wty, 2)) {
+    issueOrder(world, u, {
+      kind: "seekTile",
+      x: world.map.tileToWorldCenter(shore.tx), y: world.map.tileToWorldCenter(shore.ty),
+      tx: shore.wtx, ty: shore.wty,
+    });
+    if (u.path.length === 0 && !nearTile(world, u, shore.wtx, shore.wty, 2)) {
       u.state = "idle"; // bờ kẹt đường → nghỉ rồi thử lại
       u.repathTimer = 2;
       return;
     }
-    u.targetX = shore.wtx;
-    u.targetY = shore.wty;
-    u.state = "seekingResource";
-    u.path = p0 ?? [];
     return;
   }
   const kind = res === "wood" ? T_WOOD : res === "stone" ? T_STONE : T_FIELD;
@@ -712,18 +719,16 @@ export function sendToSource(world: World, u: Entity, res: WorkerJob) {
       u.repathTimer = 2; // nghỉ 2s rồi tìm lại, đỡ spam A*
       return;
     }
-    const p = findPath(
-      world.map, u.x, u.y,
-      world.map.tileToWorldCenter(spot.tx), world.map.tileToWorldCenter(spot.ty)
-    );
-    if (p && p.length > 0) {
-      u.targetX = spot.rtx;
-      u.targetY = spot.rty;
-      u.state = "seekingResource";
-      u.path = p;
-      return;
+    issueOrder(world, u, {
+      kind: "seekTile",
+      x: world.map.tileToWorldCenter(spot.tx), y: world.map.tileToWorldCenter(spot.ty),
+      tx: spot.rtx, ty: spot.rty,
+    });
+    if (u.path.length === 0) {
+      exclude = { tx: spot.rtx, ty: spot.rty }; // kẹt đường → thử mỏ khác
+      continue;
     }
-    exclude = { tx: spot.rtx, ty: spot.rty }; // kẹt đường → thử mỏ khác
+    return;
   }
   u.state = "idle";
   u.path = [];

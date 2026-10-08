@@ -1,6 +1,6 @@
 /**
  * Vẽ sprite ruộng lúa CHÍN VÀNG 64x64 ra public/assets/field-ripe.png.
- * Chạy 1 lần: node scripts/gen-field-sprite.mjs
+ * Chạy 1 lần: node scripts/gen-field-ripe.mjs
  * Phong cách khớp tile cỏ/nước có sẵn: nền bùn + dải nước + hàng mạ.
  */
 import { writeFileSync, mkdirSync } from "node:fs";

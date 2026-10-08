@@ -6,11 +6,40 @@
  * - supplyCap = 6 base + 7 mỗi nhà đã xong (max 20). Không nhà khỏi đẻ quân.
  */
 import { TileMap, makeRng } from "./TileMap";
-import { BASE_POP, BUILDING_DEFS, HOUSE_POP, TILE, UNIT_DEFS } from "./data";
+import { BASE_POP, BUILDING_DEFS, HOUSE_POP, TILE, UNIT_DEFS, isMonsterDef } from "./data";
+import { greetNewborn } from "./systems/overseer";
 import { Effect, Entity, EntityId, EntityKind, PlayerId, PlayerState, Projectile, Vec2 } from "./types";
 
-export const MAP_W = 96;
-export const MAP_H = 96;
+export const MAP_W = 192;
+export const MAP_H = 192;
+
+/** Vùng dungeon (góc trên-phải + đối xứng góc dưới-trái). */
+export interface DungeonZone {
+  /** ô trái-trên + kích thước (tile) */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** tile trung tâm */
+  cx: number;
+  cy: number;
+}
+
+/** 2 dungeon đối xứng gương qua tâm (pure theo kích thước map). */
+export function dungeonZones(): DungeonZone[] {
+  const W = MAP_W;
+  const H = MAP_H;
+  const a: DungeonZone = { x: 142, y: 14, w: 37, h: 37, cx: 160, cy: 32 };
+  const b: DungeonZone = {
+    x: W - 1 - (a.x + a.w - 1),
+    y: H - 1 - (a.y + a.h - 1),
+    w: a.w,
+    h: a.h,
+    cx: W - 1 - a.cx,
+    cy: H - 1 - a.cy,
+  };
+  return [a, b];
+}
 
 const GRID_CELL = 128; // world px
 
@@ -100,13 +129,13 @@ export class World {
       }
     };
     // Hồ nước: 2 cặp ven + 2 hồ trung gian (lấy nước khắp map).
-    blobLake(20, 30, 4);
-    blobLake(30, 66, 5);
-    blobLake(40, 40, 3);
+    blobLake(40, 60, 8);
+    blobLake(60, 132, 10);
+    blobLake(80, 80, 6);
     // Rừng: quanh base mỗi bên + vành đai giữa (ưu tiên gỗ dễ lấy).
     const woods: [number, number, number][] = [
-      [16, 14, 6], [26, 10, 5], [10, 26, 5],
-      [38, 30, 6], [30, 44, 5], [52, 34, 5],
+      [32, 28, 12], [52, 20, 10], [20, 52, 10],
+      [76, 60, 12], [60, 88, 10], [104, 68, 10],
     ];
     for (const [cx, cy, r] of woods) {
       map.scatterWood(rand, cx, cy, r, 120);
@@ -115,8 +144,8 @@ export class World {
     }
     // Đá: ít, ven map + 1 cụm giữa (tranh chấp muộn).
     const rocks: [number, number, number][] = [
-      [12, 48, 4], [48, 20, 4], [44, 52, 4],
-      [28, 16, 3], // đá gần base (farm cần 25 đá — cuốc gần cho kịp)
+      [24, 96, 8], [96, 40, 8], [88, 104, 8],
+      [56, 32, 6], // đá gần base (farm cần 25 đá — cuốc gần cho kịp)
     ];
     for (const [cx, cy, r] of rocks) {
       map.scatterStone(rand, cx, cy, r, 100);
@@ -125,7 +154,7 @@ export class World {
     }
     // Ruộng lúa: gần base mỗi bên (dễ nuôi quân đầu game) + 1 cặp giữa map.
     const fields: [number, number, number][] = [
-      [20, 14, 5], [14, 30, 4], [36, 34, 4],
+      [40, 28, 10], [28, 60, 8], [72, 68, 8],
     ];
     for (const [cx, cy, r] of fields) {
       map.scatterField(rand, cx, cy, r, 100);
@@ -134,16 +163,71 @@ export class World {
     }
     // Cây táo: cụm nhỏ gần base (ăn ngay) + 1 cặp giữa map (tranh chấp).
     const apples: [number, number, number][] = [
-      [26, 22, 2], [18, 40, 2], [46, 36, 2],
+      [52, 44, 4], [36, 80, 4], [92, 72, 4],
     ];
     for (const [cx, cy, r] of apples) {
       map.scatterApple(rand, cx, cy, r);
       const [mx, my] = mirror(cx, cy);
       map.scatterApple(rand, mx, my, r);
     }
+    // Dungeon 2 bên: dọn lòng + tường đá (chừa 2 cửa), quái spawn lúc chơi.
+    this.carveDungeons();
     // Đảm bảo thông đường: base xanh tới được base đỏ + 5 node + tâm.
     // Thiếu là phạt: lính không bao giờ kẹt bên kia tường cây/đá.
     this.ensureConnected();
+  }
+
+  /** Khoét 2 dungeon: lòng cỏ trống + tường đá (chừa cửa nam + cửa tây/đông). */
+  private carveDungeons() {
+    const { map } = this;
+    for (const z of dungeonZones()) {
+      // Dọn lòng.
+      for (let y = z.y; y < z.y + z.h; y++) {
+        for (let x = z.x; x < z.x + z.w; x++) {
+          if (!map.inBounds(x, y)) continue;
+          const i = map.idx(x, y);
+          map.tiles[i] = 0;
+          map.wood[i] = 0;
+          map.stone[i] = 0;
+          map.rice[i] = 0;
+          map.woodMax[i] = 0;
+          map.stumpTimer[i] = 0;
+          map.apples[i] = 0;
+        }
+      }
+      // Tường đá bao quanh (không tài nguyên → không cuốc được).
+      const midX = z.x + Math.floor(z.w / 2);
+      const midY = z.y + Math.floor(z.h / 2);
+      const gap = (t: number, a: number, b: number) => t >= a && t <= b;
+      for (let x = z.x; x < z.x + z.w; x++) {
+        for (const y of [z.y, z.y + z.h - 1]) {
+          const isSouth = y === z.y + z.h - 1;
+          // Cửa quay về tâm map: TR mở cạnh nam, BL mở cạnh bắc.
+          const doorSide = isSouth === (z.cy < map.h / 2);
+          if (doorSide && gap(x, midX - 2, midX + 1)) continue;
+          this.dungeonWall(x, y);
+        }
+      }
+      for (let y = z.y; y < z.y + z.h; y++) {
+        for (const x of [z.x, z.x + z.w - 1]) {
+          const isWest = x === z.x;
+          // Cửa hông: TR mở phía tây, BL mở phía đông (đều hướng tâm map).
+          const westZone = z.cx > map.w / 2;
+          if ((isWest === westZone) && gap(y, midY - 2, midY + 1)) continue;
+          this.dungeonWall(x, y);
+        }
+      }
+    }
+  }
+
+  private dungeonWall(x: number, y: number) {
+    const { map } = this;
+    if (!map.inBounds(x, y)) return;
+    const i = map.idx(x, y);
+    map.tiles[i] = 4; // T_STONE
+    map.wood[i] = 0;
+    map.stone[i] = 0;
+    map.rice[i] = 0;
   }
 
   /** BFS + ủi đường (rộng 2 ô) từ base xanh tới mọi điểm chốt. */
@@ -151,11 +235,13 @@ export class World {
     const { map } = this;
     const W = map.w;
     const H = map.h;
-    const start: [number, number] = [12, 10];
-    // Điểm chốt: tâm, base đỏ, 5 node (tâm ô).
+    const start: [number, number] = [24, 20];
+    // Điểm chốt: tâm, base đỏ, 5 node (tâm ô) + cửa dungeon 2 bên.
+    const dz = dungeonZones();
     const keys: [number, number][] = [
-      [48, 48], [84, 86],
-      [21, 21], [W - 21, H - 21], [35, 43], [W - 35, H - 43], [48, 48],
+      [96, 96], [168, 172],
+      [42, 42], [W - 42, H - 42], [70, 86], [W - 70, H - 86], [96, 96],
+      [dz[0].cx, dz[0].y + dz[0].h + 1], [dz[1].cx, dz[1].y - 1],
     ];
     const bfs = (): boolean[] => {
       const seen = new Uint8Array(W * H);
@@ -259,6 +345,9 @@ export class World {
   spawnUnit(defId: string, player: PlayerId, x: number, y: number): Entity {
     const e = this.baseEntity("unit", defId, player, x, y);
     this.entities.set(e.id, e);
+    // Worker mới sinh: nhận việc theo lệnh mới nhất của agent,
+    // chưa có lệnh thì theo bản năng cấu hình sẵn (WORKER_INSTINCT).
+    if (e.defId === "worker") greetNewborn(this, e);
     return e;
   }
 
@@ -489,22 +578,23 @@ export class World {
       const isSoldier = t.kind === "unit" && t.defId === "soldier";
       const isTank = t.kind === "unit" && t.defId === "tank";
       const isBase = t.kind === "building" && t.defId === "base";
+      const isMonster = t.kind === "unit" && isMonsterDef(t.defId);
       switch (attacker.defId) {
         case "soldier":
-          // Soldier săn kinh tế: Worker > Archer > Soldier > Tank > Base > Node
+          // Soldier săn kinh tế: Worker > Archer > Soldier > Tank > Quái/Base > Node
           if (isWorker) return 0;
           if (isArcher) return 1;
           if (isSoldier) return 2;
           if (isTank) return 3;
-          if (isBase) return 4;
+          if (isMonster || isBase) return 4;
           return 5;
         case "archer":
-          // Archer bắn từ sau: Tank > Soldier > Worker > Base
+          // Archer bắn từ sau: Tank > Soldier > Worker > Quái/Base
           if (isTank) return 0;
           if (isSoldier) return 1;
           if (isArcher) return 2;
           if (isWorker) return 3;
-          if (isBase) return 4;
+          if (isMonster || isBase) return 4;
           return 5;
         case "tank":
           // Tank càn gần nhất, khoét nhà tốt

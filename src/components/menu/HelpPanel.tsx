@@ -86,6 +86,7 @@ export default function HelpPanel({ onBack, inGame }: { onBack: () => void; inGa
           <div className="mt-3 rounded-lg bg-zinc-800 p-3 text-sm text-zinc-300">
             <b className="text-amber-200">📜 Mở bài gợi ý:</b> 👷👷 → ⚔️⚔️ giữ mỏ gần → 🏹 tranh giữa → 🛡️🛡️🏹🏹 push base.
             Sau <b>phút 10</b> là ☠️ Sudden Death: gold x2 + base mất máu — đừng câu giờ!
+            <br />☠️ <b>Dungeon 2 góc map:</b> slime → orc/skeleton → demon + 🐉. Hạ quái được vàng bounty, càng sâu càng giàu!
           </div>
       </>
     );

@@ -16,8 +16,10 @@ START → spawn Worker → Gold → spawn quân → tranh mỏ → giao chiến 
         💎(20)                     Nước: hồ — worker gánh về, quân uống mỗi giây
    🏞️     💎(10)  🏞️                 Hết nước cả phe chậm + yếu 30%
    🌲🪨  💎(5)  🌲🌲
-                    RED 🏰
+                     RED 🏰
 ```
+
+Đường dirt: nối base→mỏ gần→mỏ giữa→trung tâm mỗi phe (đối xứng), lót sprite dirt 16px, chỉ lên ô cỏ trống — đi được, nhà không đè lên.
 
 | Unit | Giá | Vai trò |
 |---|---|---|
@@ -44,7 +46,7 @@ Node đổi chủ theo số worker đứng trong vòng capture. Base cho +2/s n�
 ## Tick pipeline (60Hz cố định)
 
 ```
-AI (tướng đỏ) → auto (não từng lính) → movement → combat → economy → fog → sudden death → win
+AI (tướng đỏ) → auto (não từng lính) → movement → combat → overseer → economy → fog → sudden death → win
 ```
 
 - `systems/auto.ts` — não chung: worker tìm mỏ/chạy, lính tiến ra giữa rồi push base.
@@ -72,6 +74,7 @@ game.dispatch({ type: "setDirective", player: 0, ecoMil: 0.3, defAtk: 0.8, focus
 | Trọng tâm 💎 Gần/Giữa/Tâm | Worker +8/+8/+10 điểm mỏ đúng nhóm; thủ sợ trung tâm |
 | Học thuyết 1 chạm | ⚔️ Rush (công+tâm) · 🛡️ Turtle (kinh tế+gần) · ⚖️ Control (giữa) |
 | 🤖 Auto-chi tiêu | Gold tự mua lính theo slider, 2s một nhịp |
+| 🤖 Quan đốc công | Mỗi tick quyết xây gì/khi nào/ở đâu (nhà→farm→nhà 2→farm 2, đất chấm điểm gần base/ruộng) + điều tốp thợ tới móng (tối đa 3: 1 thợ 15s · 2 thợ ~9s · 3 thợ ~7s); mỗi 30s chốt chỉ tiêu việc worker theo kho + needs của tướng; thiếu tay thì xin thêm (tối đa 2/30s). Lính mới sinh nhận việc thiếu tay nhất, chưa có lệnh thì theo bản năng (giữ mỏ) |
 | ⚠️ Needs | HUD báo: base bị đánh / hết nước / thiếu vàng-gỗ-đá / pop đầy |
 | **Cần 💰🪵🪨💧🌾** | Nút 3 mức (thôi/thường/gấp) — worker tự dồn sang tài nguyên cần |
 

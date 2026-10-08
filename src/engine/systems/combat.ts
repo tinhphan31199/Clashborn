@@ -5,7 +5,7 @@
  * - Archer bắn tên (projectile), còn lại hitscan. Tank splash nhẹ.
  * - Veterancy giữ lại: 4 kills ★ (+15%), 8 kills ★★ (+30% + hồi máu).
  */
-import { BUILDING_DEFS, TILE, UNIT_DEFS } from "../data";
+import { BUILDING_DEFS, isMonsterDef, MONSTER, TILE, UNIT_DEFS } from "../data";
 import { findPath } from "../astar";
 import { Entity } from "../types";
 import { World } from "../World";
@@ -73,20 +73,26 @@ const BASE_CD = 1.2;
 
 function baseDefenseTick(world: World, dt: number) {
   for (const b of world.entities.values()) {
-    if (b.kind !== "building" || b.defId !== "base") continue;
+    if (b.kind !== "building" || b.player < 0 || b.underConstruction) continue;
+    // Base dùng hằng số riêng; tháp canh đọc từ def (atkRange/atkDamage/atkCooldown).
+    const def = BUILDING_DEFS[b.defId];
+    const rangePx = b.defId === "base" ? BASE_RANGE_PX : (def?.atkRange ?? 0) * TILE;
+    if (rangePx <= 0) continue;
+    const dmg = b.defId === "base" ? BASE_DMG : (def?.atkDamage ?? 0);
+    const cd = b.defId === "base" ? BASE_CD : (def?.atkCooldown ?? 1.5);
     if (b.attackCooldown > 0) b.attackCooldown -= dt;
     if (b.attackCooldown > 0) continue;
-    const victim = world.queryRadius(b.x, b.y, BASE_RANGE_PX).filter(
+    const victim = world.queryRadius(b.x, b.y, rangePx).filter(
       (e) => e.kind === "unit" && e.player !== b.player && e.player >= 0
     )[0];
     if (!victim) continue;
-    b.attackCooldown = BASE_CD;
+    b.attackCooldown = cd;
     b.facing = 0;
     world.addEffect({
       kind: "tracer", x1: b.x, y1: b.y - 20, x2: victim.x, y2: victim.y,
       ttl: 0.12, maxTtl: 0.12, color: "#ff9d4d",
     });
-    damageEntity(world, victim, BASE_DMG);
+    damageEntity(world, victim, dmg);
   }
 }
 
@@ -201,6 +207,16 @@ export function damageEntity(world: World, target: Entity, amount: number, attac
         world.addEffect({
           kind: "spark", x1: attacker.x, y1: attacker.y, x2: attacker.x, y2: attacker.y,
           ttl: 0.5, maxTtl: 0.5, color: "#fff06a",
+        });
+      }
+      // Tiền thưởng hạ quái dungeon.
+      const bounty = UNIT_DEFS[target.defId]?.bounty ?? 0;
+      if (bounty > 0 && target.player === MONSTER && (attacker.player === 0 || attacker.player === 1)) {
+        const pl = world.players.find((p) => p.id === attacker.player);
+        if (pl) pl.ore += bounty;
+        world.addEffect({
+          kind: "spark", x1: target.x, y1: target.y, x2: target.x, y2: target.y,
+          ttl: 0.6, maxTtl: 0.6, color: "#ffd34d",
         });
       }
     }

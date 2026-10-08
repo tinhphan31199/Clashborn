@@ -2,9 +2,10 @@
  * Renderer — AUTO-BATTLER edition (Canvas 2D, read-only).
  * Vẽ base 🏰, node 💎 (vòng chủ + income), lính bằng icon + vòng team.
  */
-import { BUILDING_DEFS, TILE, UNIT_DEFS } from "./data";
-import { APPLE_CAP, RICE_RIPE_AT, T_APPLE, T_FIELD, T_GRASS, T_ORE, T_STONE, T_STUMP, T_WATER, T_WOOD } from "./TileMap";
-import { fieldArt, unitFrames } from "./assets";
+import { BUILDING_DEFS, MONSTER, TILE, UNIT_DEFS } from "./data";
+import { APPLE_CAP, RICE_RIPE_AT, T_APPLE, T_FIELD, T_GRASS, T_ORE, T_ROAD, T_STONE, T_STUMP, T_WATER, T_WOOD } from "./TileMap";
+import { fieldArt, miniArt, miniReady, monsterArt, monsterSize, unitFrames } from "./assets";
+import { dungeonZones } from "./World";
 import { Game, HUMAN } from "./Game";
 import { Interaction } from "./input";
 import { isExplored } from "./systems/fog";
@@ -14,6 +15,14 @@ function hash(x: number, y: number): number {
   let h = (x * 374761393 + y * 668265263) | 0;
   h = (h ^ (h >> 13)) * 1274126177;
   return ((h ^ (h >> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * Sprite kín ô, tràn 1px sang phải/dưới để nuốt khe hở giữa các ô
+ * khi zoom lẻ (không tràn thì hở nền đen nhìn như viền ô).
+ */
+function tileImg(ctx: CanvasRenderingContext2D, img: HTMLImageElement, px: number, py: number) {
+  ctx.drawImage(img, px, py, TILE + 1, TILE + 1);
 }
 
 const UNIT_ICON: Record<string, string> = {
@@ -46,10 +55,25 @@ export function renderGame(
   const y0 = Math.max(0, Math.floor((cam.y - viewH / 2 / cam.zoom) / TILE) - 1);
   const y1 = Math.min(map.h - 1, Math.ceil((cam.y + viewH / 2 / cam.zoom) / TILE) + 1);
 
+  // Lót cỏ cả vùng map nhìn thấy: khe lẻ-pixel còn sót sẽ hiện cỏ chứ không hiện nền đen.
+  ctx.fillStyle = "#2d5a27";
+  ctx.fillRect(x0 * TILE, y0 * TILE, (x1 - x0 + 1) * TILE, (y1 - y0 + 1) * TILE);
+
   const fog = world.fog[HUMAN];
   // Pixel sắc, không làm mờ sprite.
   ctx.imageSmoothingEnabled = false;
   const art = fieldArt();
+  const mini = miniArt();
+  // Sprite MiniWorld đã tải đủ chưa (cây 2 mẫu, đá/cỏ/nước/sân 3 mẫu).
+  const treesOk = miniReady(mini.trees, 2);
+  const rocksOk = miniReady(mini.rocks, 3);
+  const grassOk = miniReady(mini.grass, 3);
+  const waterOk = miniReady(mini.water, 3);
+  const dirtOk = miniReady(mini.dirt, 3);
+  const roadsOk = miniReady(mini.road, 6);
+  // Nền cỏ MiniWorld theo vị trí ô (chưa tải xong → null để rớt về art.grass).
+  const miniGrass = (tx: number, ty: number): HTMLImageElement | null =>
+    grassOk ? mini.grass[Math.floor(hash(tx * 7 + 1, ty * 3) * 3) % 3]! : null;
 
   // --- terrain (luôn vẽ sprite PixelLab, zoom xa đã bị khóa nên không lo nặng máy)
   for (let ty = y0; ty <= y1; ty++) {
@@ -58,11 +82,14 @@ export function renderGame(
       const px = tx * TILE;
       const py = ty * TILE;
       if (t === T_WATER) {
-        if (art.water) {
-          ctx.drawImage(art.water, px, py, TILE, TILE);
+        if (waterOk) {
+          const wv = mini.water[Math.floor(hash(tx * 3 + 2, ty * 5) * 3) % 3]!;
+          tileImg(ctx, wv, px, py);
+        } else if (art.water) {
+          tileImg(ctx, art.water, px, py);
         } else {
           ctx.fillStyle = "#1d5e8a";
-          ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillRect(px, py, TILE + 1, TILE + 1);
           ctx.fillStyle = "rgba(255,255,255,0.10)";
           const wv = hash(tx, ty);
           ctx.fillRect(px + 4 + wv * 10, py + 8, 14, 2);
@@ -70,13 +97,20 @@ export function renderGame(
         }
       } else if (t === T_WOOD) {
         // nền cỏ lót dưới gốc cây cho đồng bộ với cả sân
-        if (art.grass) {
-          ctx.drawImage(art.grass, px, py, TILE, TILE);
+        const mg = miniGrass(tx, ty);
+        if (mg) {
+          tileImg(ctx, mg, px, py);
+        } else if (art.grass) {
+          tileImg(ctx, art.grass, px, py);
         } else {
           ctx.fillStyle = "#2d5a27";
-          ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillRect(px, py, TILE + 1, TILE + 1);
         }
-        if (art.tree) {
+        if (treesOk) {
+          // cây MiniWorld 16px vẽ 2x cho nét (neo chân vào ô)
+          const tree = mini.trees[hash(tx * 3, ty) < 0.5 ? 0 : 1]!;
+          ctx.drawImage(tree, px - 0.5, py - 0.5, TILE + 1, TILE + 1);
+        } else if (art.tree) {
           // sprite 64px neo chân vào ô (tán tràn lên ô trên cho tự nhiên)
           ctx.drawImage(art.tree, px - 16, py - 32, 64, 64);
         } else {
@@ -102,12 +136,15 @@ export function renderGame(
           ctx.fillRect(px + 4, py + 2, (TILE - 8) * pct, 4);
         }
       } else if (t === T_APPLE) {
-        // Cây táo: cỏ lót + sprite táo (hết quả thì hiện cây trơ trụi).
-        if (art.grass) {
-          ctx.drawImage(art.grass, px, py, TILE, TILE);
+        // Cây táo: cỏ lót ĐỒNG BỘ với cỏ xung quanh + sprite táo (hết quả thì hiện cây trơ trụi).
+        const mgApple = miniGrass(tx, ty);
+        if (mgApple) {
+          tileImg(ctx, mgApple, px, py);
+        } else if (art.grass) {
+          tileImg(ctx, art.grass, px, py);
         } else {
           ctx.fillStyle = "#2d5a27";
-          ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillRect(px, py, TILE + 1, TILE + 1);
         }
         const apples = map.apples[map.idx(tx, ty)];
         const fruitSprite = apples > 0 ? art.apple : art.tree;
@@ -130,24 +167,37 @@ export function renderGame(
           ctx.fillRect(px + 4, py + 2, (TILE - 8) * pct, 4);
         }
       } else if (t === T_STONE) {
-        ctx.fillStyle = "#4b4b4b";
-        ctx.fillRect(px, py, TILE, TILE);
-        ctx.fillStyle = "#8a8a8a";
-        const ox = hash(tx * 5, ty * 2) * 12;
-        const oy = hash(tx, ty * 3) * 12;
-        ctx.beginPath();
-        ctx.moveTo(px + 6 + ox, py + 22);
-        ctx.lineTo(px + 12 + ox, py + 8 + oy);
-        ctx.lineTo(px + 22 + ox * 0.5, py + 22);
-        ctx.closePath();
-        ctx.fill();
+        const mg = miniGrass(tx, ty);
+        if (mg) {
+          tileImg(ctx, mg, px, py);
+        } else {
+          ctx.fillStyle = "#4b4b4b";
+          ctx.fillRect(px, py, TILE + 1, TILE + 1);
+        }
+        if (rocksOk) {
+          const rock = mini.rocks[Math.floor(hash(tx * 5, ty * 2) * 3) % 3]!;
+          ctx.drawImage(rock, px - 0.5, py - 0.5, TILE + 1, TILE + 1);
+        } else {
+          ctx.fillStyle = "#8a8a8a";
+          const ox = hash(tx * 5, ty * 2) * 12;
+          const oy = hash(tx, ty * 3) * 12;
+          ctx.beginPath();
+          ctx.moveTo(px + 6 + ox, py + 22);
+          ctx.lineTo(px + 12 + ox, py + 8 + oy);
+          ctx.lineTo(px + 22 + ox * 0.5, py + 22);
+          ctx.closePath();
+          ctx.fill();
+        }
       } else if (t === T_STUMP) {
-        // Gốc cây bị đốn: cỏ lót + sprite gốc (fallback vẽ tay).
-        if (art.grass) {
-          ctx.drawImage(art.grass, px, py, TILE, TILE);
+        // Gốc cây bị đốn: cỏ lót ĐỒNG BỘ với cỏ xung quanh + sprite gốc.
+        const mg = miniGrass(tx, ty);
+        if (mg) {
+          tileImg(ctx, mg, px, py);
+        } else if (art.grass) {
+          tileImg(ctx, art.grass, px, py);
         } else {
           ctx.fillStyle = "#2d5a27";
-          ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillRect(px, py, TILE + 1, TILE + 1);
         }
         if (art.stump) {
           ctx.drawImage(art.stump, px - 16, py - 32, 64, 64);
@@ -163,7 +213,7 @@ export function renderGame(
         const ripe = amt >= RICE_RIPE_AT;
         const sprite = ripe ? art.ripe ?? art.field : art.field;
         if (sprite) {
-          ctx.drawImage(sprite, px, py, TILE, TILE);
+          ctx.drawImage(sprite, px - 0.5, py - 0.5, TILE + 1, TILE + 1);
           if (!ripe) {
             // Phủ xanh theo độ non (càng non càng xanh đậm).
             ctx.fillStyle = `rgba(46,125,50,${Math.min(0.55, (RICE_RIPE_AT - amt) / RICE_RIPE_AT)})`;
@@ -175,7 +225,7 @@ export function renderGame(
           }
         } else {
           ctx.fillStyle = "#7a5c2e";
-          ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillRect(px, py, TILE + 1, TILE + 1);
           ctx.fillStyle = "#6b8f67";
           ctx.fillRect(px, py + 10, TILE, 3);
           ctx.fillRect(px, py + 22, TILE, 3);
@@ -186,13 +236,33 @@ export function renderGame(
             ctx.fillRect(px + sx, py + 18, 3, 6);
           }
         }
+      } else if (t === T_ROAD) {
+        // Đường dirt: 6 mẫu lót theo vị trí ô (rớt dần về dirt → cỏ → màu phẳng).
+        if (roadsOk) {
+          const rv = mini.road[Math.floor(hash(tx * 11 + 3, ty * 7) * 6) % 6]!;
+          tileImg(ctx, rv, px, py);
+        } else if (dirtOk) {
+          const dv = mini.dirt[Math.floor(hash(tx * 11 + 3, ty * 7) * 3) % 3]!;
+          tileImg(ctx, dv, px, py);
+        } else {
+          const mgRoad = miniGrass(tx, ty);
+          if (mgRoad) {
+            tileImg(ctx, mgRoad, px, py);
+          } else {
+            ctx.fillStyle = "#a68b5b";
+            ctx.fillRect(px, py, TILE + 1, TILE + 1);
+          }
+        }
       } else {
-        if (art.grass) {
-          ctx.drawImage(art.grass, px, py, TILE, TILE);
+        const mg = miniGrass(tx, ty);
+        if (mg) {
+          tileImg(ctx, mg, px, py);
+        } else if (art.grass) {
+          tileImg(ctx, art.grass, px, py);
         } else {
           const v = hash(tx, ty);
           ctx.fillStyle = v > 0.5 ? "#3d7a37" : "#37713a";
-          ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillRect(px, py, TILE + 1, TILE + 1);
         }
         if (t === T_ORE) {
           // vỉa quặng: cỏ lót dưới, cụm quặng nằm trên (nhỏ hơn ô)
@@ -222,12 +292,31 @@ export function renderGame(
     }
   }
 
+  // --- vùng dungeon: phủ tím tối + viền hang (quái ở trong)
+  for (const z of dungeonZones()) {
+    ctx.fillStyle = "rgba(24,10,46,0.42)";
+    ctx.fillRect(z.x * TILE, z.y * TILE, z.w * TILE, z.h * TILE);
+    ctx.strokeStyle = "rgba(168,85,247,0.8)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(z.x * TILE, z.y * TILE, z.w * TILE, z.h * TILE);
+    ctx.fillStyle = "rgba(216,180,254,0.9)";
+    ctx.font = "bold 13px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("☠ DUNGEON", (z.x + z.w / 2) * TILE, (z.y + 1) * TILE);
+    ctx.textAlign = "left";
+  }
+
   const visibleToHuman = (e: Entity) =>
     !fog || fog[map.idx(map.worldToTile(e.x), map.worldToTile(e.y))] === 2 || e.player === HUMAN;
 
   const ents = [...world.entities.values()]
     .filter(visibleToHuman)
     .sort((a, b) => a.y - b.y);
+
+  // Cỏ lót chân công trình là LỚP THẤP NHẤT — vẽ trước lính để không đè lính.
+  for (const e of ents) {
+    if (e.kind === "building") drawBuildingGround(ctx, e);
+  }
 
   for (const e of ents) {
     if (e.kind === "unit") drawUnit(ctx, game, e);
@@ -292,16 +381,21 @@ export function renderGame(
     if (e.hp < e.maxHp) drawHealthBar(ctx, e.x, e.y, e);
   }
 
-  // --- fog
+  // --- fog (gom 1 path mỗi mức: các ô kề nhau thành khối liền, không khe)
   if (fog) {
+    const unseen = new Path2D();
+    const seen = new Path2D();
     for (let ty = y0; ty <= y1; ty++) {
       for (let tx = x0; tx <= x1; tx++) {
         const f = fog[ty * map.w + tx];
         if (f === 2) continue;
-        ctx.fillStyle = f === 0 ? "rgba(0,0,0,0.88)" : "rgba(0,0,0,0.45)";
-        ctx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
+        (f === 0 ? unseen : seen).rect(tx * TILE, ty * TILE, TILE, TILE);
       }
     }
+    ctx.fillStyle = "rgba(0,0,0,0.88)";
+    ctx.fill(unseen);
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fill(seen);
   }
 
   ctx.restore();
@@ -327,6 +421,27 @@ function teamColor(game: Game, player: number): string {
 function drawUnit(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
   const def = UNIT_DEFS[e.defId];
   const r = def?.radius ?? 9;
+  // Quái dungeon: sprite MiniWorld + nhún theo nhịp (tím = nguy hiểm).
+  if (e.player === MONSTER) {
+    const sprite = monsterArt()[e.defId];
+    const S = monsterSize(e.defId);
+    ctx.fillStyle = "rgba(88,28,135,0.85)";
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, r + 2, 0, Math.PI * 2);
+    ctx.fill();
+    if (sprite) {
+      const bob = Math.sin(game.world.time * 6 + e.id) * 2;
+      ctx.drawImage(sprite, e.x - S / 2, e.y - S / 2 + bob, S, S);
+    } else {
+      ctx.fillStyle = "#7e22ce";
+      ctx.font = `${Math.max(12, r)}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(def?.icon ?? "•", e.x, e.y + 1);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+    }
+  } else {
   // Lính phe ta: sprite PixelLab đi bộ (đi mới chạy frames, đứng yên pose 0).
   const frames = e.player === HUMAN ? unitFrames(e.defId) : [];
   const ready = frames.length === 8 && frames.every((f) => f);
@@ -353,6 +468,7 @@ function drawUnit(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
   }
+  }
   // worker đang gánh thì vẽ bao trên lưng
   const showCarry = e.kind === "unit" && e.defId === "worker" && e.carry > 0;
   if (showCarry) {
@@ -366,20 +482,30 @@ function drawUnit(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
   }
 }
 
-function drawNodeOrBase(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
-  const color = teamColor(game, e.player);
+/** Cỏ lót chân công trình (lớp thấp nhất — gọi trước vòng vẽ lính). */
+function drawBuildingGround(ctx: CanvasRenderingContext2D, e: Entity) {
   const px = e.tx * TILE;
   const py = e.ty * TILE;
   const wpx = e.tw * TILE;
   const hpx = e.th * TILE;
   const isBase = e.defId === "base";
   const art = fieldArt();
+  const mini = miniArt();
 
-  if (art.grass) {
-    // lót đúng từng ô cỏ 32px dưới chân công trình
+  const grassOk = miniReady(mini.grass, 3);
+  if (grassOk) {
+    // lót cỏ MiniWorld mới từng ô 32px dưới chân công trình (tràn 1px nuốt khe)
     for (let oy = 0; oy < e.th; oy++) {
       for (let ox = 0; ox < e.tw; ox++) {
-        ctx.drawImage(art.grass, px + ox * TILE, py + oy * TILE, TILE, TILE);
+        const g = mini.grass[Math.floor(hash((e.tx + ox) * 7 + 1, (e.ty + oy) * 3) * 3) % 3];
+        if (g) ctx.drawImage(g, px + ox * TILE, py + oy * TILE, TILE + 1, TILE + 1);
+      }
+    }
+  } else if (art.grass) {
+    // lót đúng từng ô cỏ 32px dưới chân công trình (tràn 1px nuốt khe)
+    for (let oy = 0; oy < e.th; oy++) {
+      for (let ox = 0; ox < e.tw; ox++) {
+        ctx.drawImage(art.grass, px + ox * TILE, py + oy * TILE, TILE + 1, TILE + 1);
       }
     }
   } else {
@@ -388,6 +514,20 @@ function drawNodeOrBase(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
     ctx.fillStyle = isBase ? "#52525b" : "#6b5a23";
     ctx.fillRect(px + 4, py + 4, wpx - 8, hpx - 8);
   }
+}
+
+function drawNodeOrBase(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
+  const color = teamColor(game, e.player);
+  const px = e.tx * TILE;
+  const py = e.ty * TILE;
+  const wpx = e.tw * TILE;
+  const hpx = e.th * TILE;
+  const isBase = e.defId === "base";
+  const art = fieldArt();
+  const mini = miniArt();
+  // Nhà theo phe: ta (HUMAN) mái xanh Cyan, địch mái đỏ — đúng 2 phe pack MiniWorld.
+  const houseSprite =
+    e.player === HUMAN ? mini.houseCyan : mini.houseRed;
 
   ctx.font = `${isBase ? 34 : 22}px sans-serif`;
   ctx.textAlign = "center";
@@ -398,27 +538,49 @@ function drawNodeOrBase(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
     // thành chính bằng sprite (vừa khít ô 4x4)
     ctx.drawImage(art.base, px, py, wpx, hpx);
   } else if (e.defId === "house") {
-    if (art.house && !e.underConstruction) ctx.drawImage(art.house, px, py, wpx, hpx);
+    if (houseSprite && !e.underConstruction) ctx.drawImage(houseSprite, px, py, wpx, hpx);
+    else if (art.house && !e.underConstruction) ctx.drawImage(art.house, px, py, wpx, hpx);
     else drawHouse(ctx, px, py, wpx, hpx, e.underConstruction ? e.buildProgress : 1);
   } else if (e.defId === "farm") {
     if (art.farm && !e.underConstruction) ctx.drawImage(art.farm, px, py, wpx, hpx);
     else drawFarm(ctx, px, py, wpx, hpx, e.underConstruction ? e.buildProgress : 1);
+  } else if (e.defId === "tower" || e.defId === "market" || e.defId === "well") {
+    // Tháp/chợ/giếng: sprite MiniWorld theo phe (tháp 16x32 vừa khít ô 1x2).
+    const struct =
+      e.defId === "tower"
+        ? e.player === HUMAN ? mini.towerCyan : mini.towerRed
+        : e.defId === "market"
+          ? e.player === HUMAN ? mini.marketCyan : mini.marketRed
+          : e.player === HUMAN ? mini.wellCyan : mini.wellRed;
+    if (e.underConstruction) {
+      drawScaffold(ctx, px, py, wpx, hpx, e.buildProgress);
+    } else if (struct) {
+      ctx.drawImage(struct, px, py, wpx, hpx);
+    } else {
+      ctx.fillText(BUILDING_DEFS[e.defId]?.icon ?? "•", px + wpx / 2, py + hpx / 2 + 8);
+    }
   } else {
     ctx.fillText(isBase ? "🏰" : "💎", px + wpx / 2, py + hpx / 2 + (isBase ? 12 : 8));
   }
   ctx.textAlign = "left";
 
-  // Móng đang xây: khung đứt nét + % tiến độ.
+  // Móng đang xây: khung đứt nét + thanh tiến độ + % tiến độ.
   if (e.underConstruction) {
     ctx.strokeStyle = "#fbbf24";
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 4]);
     ctx.strokeRect(px - 3, py - 3, wpx + 6, hpx + 6);
     ctx.setLineDash([]);
+    // Thanh tiến độ hổ phách phía trên (kẻo chữ % bị che trên mobile).
+    const pct = Math.max(0, Math.min(1, e.buildProgress));
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillRect(px, py - 18, wpx, 5);
+    ctx.fillStyle = "#fbbf24";
+    ctx.fillRect(px, py - 18, wpx * pct, 5);
     ctx.fillStyle = "#fbbf24";
     ctx.font = "bold 11px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(`🏗 ${Math.floor(e.buildProgress * 100)}%`, px + wpx / 2, py + hpx + 13);
+    ctx.fillText(`🏗 ${Math.floor(pct * 100)}%`, px + wpx / 2, py + hpx + 13);
     ctx.textAlign = "left";
     return;
   }
@@ -431,6 +593,26 @@ function drawNodeOrBase(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
     ctx.fillText(`+${def.income}/s`, px + wpx / 2, py + hpx + 13);
     ctx.textAlign = "left";
   }
+}
+
+/** Giàn giáo móng đang xây (cho nhà chưa có hình vẽ tay riêng): khung gỗ + phần đã dựng. */
+function drawScaffold(
+  ctx: CanvasRenderingContext2D, px: number, py: number, w: number, h: number, done: number
+) {
+  const d = Math.max(0.08, Math.min(1, done));
+  ctx.fillStyle = "rgba(122,72,20,0.55)";
+  ctx.fillRect(px + 3, py + 3, w - 6, h - 6);
+  ctx.fillStyle = "#a16207";
+  ctx.fillRect(px + 3, py + 3, w - 6, (h - 6) * d);
+  ctx.strokeStyle = "#78350f";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px + 3, py + 3, w - 6, h - 6);
+  ctx.beginPath();
+  ctx.moveTo(px + 3, py + 3);
+  ctx.lineTo(px + w - 3, py + h - 3);
+  ctx.moveTo(px + w - 3, py + 3);
+  ctx.lineTo(px + 3, py + h - 3);
+  ctx.stroke();
 }
 
 /** Nhà: khối nâu + mái đỏ. Farm: luống xanh + hàng rào. */
@@ -505,6 +687,7 @@ export function renderMinimap(
         else if (t === T_STONE) ctx.fillStyle = "#6b6b6b";
         else if (t === T_FIELD) ctx.fillStyle = map.rice[map.idx(tx, ty)] >= RICE_RIPE_AT ? "#c9a227" : "#5a6b2f";
         else if (t === T_STUMP) ctx.fillStyle = "#5a4a28";
+        else if (t === T_ROAD) ctx.fillStyle = "#a68b5b";
         else ctx.fillStyle = "#2c5a2a";
       }
       ctx.fillRect(tx * s, ty * s, Math.ceil(s), Math.ceil(s));
@@ -517,6 +700,12 @@ export function renderMinimap(
     ctx.fillStyle = teamColor(game, e.player);
     const d = e.kind === "building" ? 4 : 2.5;
     ctx.fillRect((e.x / TILE) * s - d / 2, (e.y / TILE) * s - d / 2, d, d);
+  }
+  // Viền dungeon tím trên minimap.
+  ctx.strokeStyle = "#a855f7";
+  ctx.lineWidth = 1;
+  for (const z of dungeonZones()) {
+    ctx.strokeRect(z.x * s, z.y * s, z.w * s, z.h * s);
   }
   const cam = ui.camera;
   const halfW = viewW / 2 / cam.zoom / TILE * s;

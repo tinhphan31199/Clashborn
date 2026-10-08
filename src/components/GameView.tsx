@@ -5,7 +5,7 @@
  * Nhận config + settings + save ban đầu; Esc mở PauseMenu (lưu/tải/cài đặt/trợ giúp).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SPAWN_ORDER, UNIT_DEFS } from "@/engine/data";
+import { BUILDING_DEFS, SPAWN_ORDER, UNIT_DEFS } from "@/engine/data";
 import { DOCTRINES } from "@/engine/commands";
 import { Game, HUMAN, AI_PLAYER } from "@/engine/Game";
 import { Interaction, ZOOM_MAX, ZOOM_MIN } from "@/engine/input";
@@ -13,10 +13,17 @@ import { renderGame, renderMinimap } from "@/engine/render";
 import { MAX_HOUSES } from "@/engine/data";
 import { finishedBuildings } from "@/engine/systems/construction";
 import { shortages } from "@/engine/systems/economy";
+import { overseerReport } from "@/engine/systems/overseer";
+import { postureOf } from "@/engine/systems/commander";
+import { surgeActive } from "@/engine/systems/monsterDirector";
 import { GamePhase, MapFocus } from "@/engine/types";
 import type { AppSettings, MatchConfig } from "@/menu/config";
 import { AI_INFO } from "@/menu/config";
 import PauseMenu from "./menu/PauseMenu";
+import dynamic from "next/dynamic";
+
+// Agent Anh Hùng chỉ chạy ở client (cần CopilotKitProvider + game đang chạy).
+const HeroAgent = dynamic(() => import("./HeroAgent"), { ssr: false });
 
 interface HudState {
   gold: number;
@@ -46,6 +53,8 @@ interface HudState {
   needs: { gold: number; wood: number; stone: number; water: number; food: number };
   food: number;
   warnings: string[];
+  overseer: string;
+  posture: string;
   nodes: { name: string; income: number; owner: number }[];
 }
 
@@ -707,6 +716,12 @@ export default function GameView({
           >
             🤖 Auto-chi tiêu {hud?.autoSpend ? "ON" : "OFF"}
           </button>
+          <div className="mt-1 rounded border border-zinc-800 bg-zinc-950/60 px-1.5 py-1 text-zinc-400" title="Quan đốc công ra lệnh mỗi 30s theo kho + yêu cầu của tướng">
+            🤖 {hud?.overseer ?? "…"}
+          </div>
+          <div className="mt-1 rounded border border-zinc-800 bg-zinc-950/60 px-1.5 py-1 text-zinc-400" title="Tư lệnh mặt trận: thế trận hiện tại của squad ta">
+            ⚔️ {postureLabel(hud?.posture)}
+          </div>
           <div className="mt-1">
             <div className="mb-0.5 text-zinc-400">Cần gì? (kho cạn worker tự đi lấy)</div>
             <div className="flex gap-1">
@@ -901,10 +916,13 @@ export default function GameView({
               <div className="mt-3 rounded bg-zinc-800 p-2 text-zinc-400">
                 Mở bài gợi ý: 👷👷 → ⚔️⚔️ giữ mỏ gần → 🏹 tranh giữa → 🛡️🛡️🏹🏹 push base.
               </div>
-              <button className="mt-4 rounded bg-zinc-700 px-4 py-1 hover:bg-zinc-600" onClick={() => setShowHelp(false)}>Vào trận</button>
+              <button className="mt-4 rounded bg-zinc-700 px-4 py-1 hover:bg-zinc-600"           onClick={() => setShowHelp(false)}>Vào trận</button>
             </div>
           </div>
         )}
+
+        {/* 🛡️ Agent Anh Hùng — phó tướng AI (CopilotKit + Gemini) */}
+        <HeroAgent gameRef={gameRef} />
       </div>
     </div>
   );
@@ -922,6 +940,7 @@ function collectHud(game: Game, ui: Interaction): HudState {
     );
     if (danger) needs.push("🏰 Base bị đánh!");
   }
+  if (surgeActive(game.world)) needs.push("☠️ Bầy quái đang đi săn!");
   if (me.water <= 0.5) needs.push("💧 Hết nước — quân yếu 30%!");
   else if (me.waterIncome < 0 && me.water < 25) needs.push("💧 Sắp hết nước!");
   if (me.ore < 50 && me.income < 8) needs.push("💰 Thiếu vàng!");
@@ -941,7 +960,14 @@ function collectHud(game: Game, ui: Interaction): HudState {
   }
   for (const e of game.world.entities.values()) {
     if (e.kind === "building" && e.player === HUMAN && e.underConstruction) {
-      needs.push(e.defId === "house" ? "🏠 Đang xây nhà…" : "🚜 Đang xây trang trại…");
+      // Hiện cả chi phí đã trả để tướng thấy xây nhà/farm tốn tài nguyên.
+      const def = BUILDING_DEFS[e.defId];
+      const cost: string[] = [];
+      if (def?.wood) cost.push(`−${def.wood}🪵`);
+      if (def?.stone) cost.push(`−${def.stone}🪨`);
+      needs.push(
+        `${def?.icon ?? "🏗"} Đang xây ${def?.name ?? e.defId} ${Math.floor(e.buildProgress * 100)}% (${cost.join(" ")})…`
+      );
       break;
     }
   }
@@ -977,6 +1003,8 @@ function collectHud(game: Game, ui: Interaction): HudState {
     kills,
     needs: { ...me.needs },
     warnings: needs,
+    overseer: overseerReport(game.world, HUMAN),
+    posture: postureOf(HUMAN),
     nodes: game.world.nodes().map((n) => ({
       name: n.defId,
       income: 0,
@@ -989,4 +1017,11 @@ function fmtTime(t: number): string {
   const m = Math.floor(t / 60);
   const s = Math.floor(t % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function postureLabel(p?: string): string {
+  if (p === "DEFEND") return "Thủ nhà";
+  if (p === "PUSH") return "Tổng đẩy base!";
+  if (p === "HARASS") return "Quấy kinh tế địch";
+  return "Giữ tuyến";
 }

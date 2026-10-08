@@ -97,3 +97,107 @@ export function unitFrames(defId: string): (HTMLImageElement | null)[] {
   }
   return unitCache[defId] ?? [];
 }
+
+/** Asset MiniWorldSprites (ô 16px): cây/đá/cỏ + nhà theo phe. */
+export interface MiniArt {
+  trees: (HTMLImageElement | null)[];
+  rocks: (HTMLImageElement | null)[];
+  grass: (HTMLImageElement | null)[];
+  water: (HTMLImageElement | null)[];
+  dirt: (HTMLImageElement | null)[];
+  houseCyan: HTMLImageElement | null;
+  houseRed: HTMLImageElement | null;
+  towerCyan: HTMLImageElement | null;
+  towerRed: HTMLImageElement | null;
+  marketCyan: HTMLImageElement | null;
+  marketRed: HTMLImageElement | null;
+  wellCyan: HTMLImageElement | null;
+  wellRed: HTMLImageElement | null;
+  road: (HTMLImageElement | null)[];
+}
+
+const miniCache: MiniArt = {
+  trees: [], rocks: [], grass: [], water: [], dirt: [],
+  houseCyan: null, houseRed: null,
+  towerCyan: null, towerRed: null,
+  marketCyan: null, marketRed: null,
+  wellCyan: null, wellRed: null,
+  road: [],
+};
+let miniStarted = false;
+
+function loadMiniImg(src: string, set: (img: HTMLImageElement) => void) {
+  const img = new Image();
+  img.onload = () => set(img);
+  img.src = src;
+}
+
+export function miniArt(): MiniArt {
+  if (typeof window === "undefined") return miniCache;
+  if (!miniStarted) {
+    miniStarted = true;
+    ["a", "b"].forEach((v, i) => loadMiniImg(`/assets/mini/tree-${v}.png`, (img) => { miniCache.trees[i] = img; }));
+    [0, 1, 2].forEach((i) => {
+      loadMiniImg(`/assets/mini/rock-${i}.png`, (img) => { miniCache.rocks[i] = img; });
+      loadMiniImg(`/assets/mini/grass-${i}.png`, (img) => { miniCache.grass[i] = img; });
+      loadMiniImg(`/assets/mini/water-${i}.png`, (img) => { miniCache.water[i] = img; });
+      loadMiniImg(`/assets/mini/dirt-${i}.png`, (img) => { miniCache.dirt[i] = img; });
+    });
+    loadMiniImg("/assets/mini/house-cyan.png", (img) => { miniCache.houseCyan = img; });
+    loadMiniImg("/assets/mini/house-red.png", (img) => { miniCache.houseRed = img; });
+    loadMiniImg("/assets/mini/tower-cyan.png", (img) => { miniCache.towerCyan = img; });
+    loadMiniImg("/assets/mini/tower-red.png", (img) => { miniCache.towerRed = img; });
+    loadMiniImg("/assets/mini/market-cyan.png", (img) => { miniCache.marketCyan = img; });
+    loadMiniImg("/assets/mini/market-red.png", (img) => { miniCache.marketRed = img; });
+    loadMiniImg("/assets/mini/well-cyan.png", (img) => { miniCache.wellCyan = img; });
+    loadMiniImg("/assets/mini/well-red.png", (img) => { miniCache.wellRed = img; });
+    [0, 1, 2, 3, 4, 5].forEach((i) => {
+      loadMiniImg(`/assets/mini/road-${i}.png`, (img) => { miniCache.road[i] = img; });
+    });
+  }
+  return miniCache;
+}
+
+/** true khi mảng sprite đã tải đủ n frame. */
+export function miniReady(arr: (HTMLImageElement | null)[], n: number): boolean {
+  return arr.length >= n && arr.every(Boolean);
+}
+
+/** Sprite quái dungeon (1 frame đứng mỗi loại). */
+const MONSTER_FILES: Record<string, string> = {
+  slime: "slime.png",
+  slimeblue: "slime-blue.png",
+  bigslime: "slime-big.png",
+  orc: "orc.png",
+  skeleton: "skeleton.png",
+  demon: "demon.png",
+  dragon: "dragon.png",
+};
+
+const monsterCache: Record<string, HTMLImageElement | null> = {};
+let monsterStarted = false;
+
+export function monsterArt(): Record<string, HTMLImageElement | null> {
+  if (typeof window === "undefined") return monsterCache;
+  if (!monsterStarted) {
+    monsterStarted = true;
+    for (const [id, file] of Object.entries(MONSTER_FILES)) {
+      const img = new Image();
+      img.onload = () => {
+        monsterCache[id] = img;
+      };
+      img.src = `/assets/monsters/${file}`;
+    }
+  }
+  return monsterCache;
+}
+
+/** Kích thước vẽ quái (px) theo loại. */
+export function monsterSize(defId: string): number {
+  if (defId === "dragon") return 72;
+  if (defId === "demon") return 44;
+  if (defId === "bigslime") return 30;
+  if (defId === "orc") return 34;
+  if (defId === "skeleton") return 32;
+  return 24;
+}

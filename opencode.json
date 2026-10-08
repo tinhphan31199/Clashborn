@@ -8,6 +8,17 @@
       "headers": {
         "Authorization": "Bearer b111eab7-0b34-42f7-b440-5148787775f9"
       }
+    },
+    "godot": {
+      "type": "local",
+      "command": [
+        "/Users/phantrongtinh/.local/bin/uv",
+        "run",
+        "--project",
+        "/Users/phantrongtinh/Documents/DEV/rts-engine/godot-mcp",
+        "godot-editor-mcp"
+      ],
+      "enabled": true
     }
   }
 }

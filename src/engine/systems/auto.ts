@@ -11,23 +11,25 @@
  */
 import { BUILDING_DEFS, TILE } from "../data";
 import { findPath } from "../astar";
+import { commanderTick } from "./commander";
+import { nearestDropoff } from "./economy";
+import { issueOrder } from "./workOrders";
 import { World } from "../World";
 import { Entity } from "../types";
 
 const REPATH = 1.0; // auto-brain suy nghĩ lại mỗi 1s (đỡ tốn pathfinding)
 
 export function autoTick(world: World, dt: number) {
-  const center = { x: (world.map.w * TILE) / 2, y: (world.map.h * TILE) / 2 };
   for (const u of world.entities.values()) {
     if (u.kind !== "unit") continue;
     u.repathTimer -= dt;
 
     if (u.defId === "worker") {
       workerBrain(world, u, dt);
-    } else {
-      armyBrain(world, u, dt, center);
     }
   }
+  // Quân chiến đấu do FieldCommander lái theo squad (thay armyBrain rời rạc).
+  commanderTick(world, dt);
 }
 
 function workerBrain(world: World, u: Entity, dt: number) {
@@ -38,20 +40,21 @@ function workerBrain(world: World, u: Entity, dt: number) {
     const base = world.baseOf(u.player);
     if (base) {
       if (u.repathTimer <= 0 || u.path.length === 0) {
-        const p = findPath(world.map, u.x, u.y, base.x, base.y);
-        u.path = p ?? [];
-        u.state = "moving";
-        u.targetId = null;
+        issueOrder(world, u, { kind: "fleeTo", x: base.x, y: base.y });
         u.repathTimer = REPATH;
       }
       return;
     }
   }
+  // Thợ đang xây (repairing) do agent sở hữu — không giật đi việc khác.
+  // (Chạy giặc ở trên vẫn được: móng thiếu thợ thì agent cử lại.)
+  if (u.state === "repairing") return;
   // Chạy xong / spawn mới (moving mà hết path) → đứng yên để rolesTick + tripsTick lo.
   if (u.state === "moving" && u.path.length === 0) {
     u.state = "idle";
   }
-  // Đang gánh dở mà rảnh (vừa chạy giặc xong / spawn mới) → về base nộp trước.
+  // Đang gánh dở mà rảnh (vừa chạy giặc xong / spawn mới) → về điểm nộp
+  // gần nhất (có farm thì về farm, chưa có mới về base) nộp trước.
   // Đang gathering/seeking thì kệ — tripsTick cho gánh đầy CAP rồi mới về.
   // Ngoại lệ: worker lúa gánh NƯỚC đi tưới thì kệ (không phải hàng nộp kho).
   if (
@@ -59,11 +62,9 @@ function workerBrain(world: World, u: Entity, dt: number) {
     !(u.job === "food" && u.carryType === "water") &&
     (u.state === "idle" || (u.state === "moving" && u.path.length === 0))
   ) {
-    const base = world.baseOf(u.player);
-    u.state = "returning";
-    if (base) {
-      const p = findPath(world.map, u.x, u.y, base.x, base.y);
-      u.path = p ?? [];
+    const drop = nearestDropoff(world, u.player, u.x, u.y) ?? world.baseOf(u.player);
+    if (drop) {
+      issueOrder(world, u, { kind: "returnTo", x: drop.x, y: drop.y });
     }
     return;
   }
@@ -84,10 +85,7 @@ function workerBrain(world: World, u: Entity, dt: number) {
     u.path = [];
     return;
   }
-  const p = findPath(world.map, u.x, u.y, node.x, node.y);
-  u.path = p ?? [];
-  u.state = "seekingResource";
-  u.targetId = node.id;
+  issueOrder(world, u, { kind: "seekNode", nodeId: node.id, x: node.x, y: node.y });
   u.repathTimer = REPATH * 2;
 }
 
@@ -129,75 +127,4 @@ function bestNodeFor(world: World, u: Entity) {
     }
   }
   return best;
-}
-
-function armyBrain(
-  world: World, u: Entity, dt: number, center: { x: number; y: number }
-) {
-  void dt;
-  // Đang đánh → combat system lo. Brain chỉ lo khi rảnh.
-  if (u.state === "attacking") return;
-  // Vừa spawn (idle tại base) → brain dưới tự đưa ra mặt trận.
-  const pl = world.players.find((p) => p.id === u.player);
-  const enemyBase = world.baseOf(u.player === 0 ? 1 : 0);
-
-  // Có địch trong sight → để combatTick nhặt (ưu tiên theo loại lính).
-  const sightPx = 7 * TILE;
-  const seen = world.priorityEnemy(u, sightPx);
-  if (seen) return; // combatTick sẽ chuyển sang attacking
-
-  if (u.repathTimer > 0 && u.path.length > 0) return;
-
-  // B2: slider Thủ↔Công đổi cách đánh.
-  // defAtk cao → push sớm với ít quân; thấp → ôm tuyến thủ gần nhà.
-  const defAtk = pl ? pl.defAtk : 0.5;
-  const pushSize = Math.round(6 - defAtk * 4); // 6 (thủ) … 2 (công)
-  const pushTime = 200 - defAtk * 140; // 200s … 60s
-
-  // Tank đi đầu: tiến thẳng; Archer đi sau: tiến chậm hơn (giữ khoảng cách).
-  // Quân spawn ra đi thẳng mặt trận, không qua điểm tập kết.
-  let dest = center;
-  if (pl) {
-    const base = world.baseOf(u.player);
-    if (defAtk < 0.3 && base) {
-      // Thủ: giữ tuyến phòng ngự giữa base và trung tâm (trừ khi quân áp đảo).
-      const armySize = world.unitsOf(u.player).filter((a) => a.defId !== "worker").length;
-      if (armySize < 10) {
-        dest = {
-          x: base.x + (center.x - base.x) * 0.35,
-          y: base.y + (center.y - base.y) * 0.35,
-        };
-      } else if (enemyBase) {
-        dest = { x: enemyBase.x, y: enemyBase.y };
-      }
-    } else if (enemyBase) {
-      // Đã qua giữa map (sang nửa địch) hoặc quân đông / trận lâu → push base.
-      // Tránh kẹt lanh quanh tâm do separation jitter.
-      const pastMid =
-        u.player === 0
-          ? u.x + u.y > center.x + center.y + TILE * 2
-          : u.x + u.y < center.x + center.y - TILE * 2;
-      const armySize = world.unitsOf(u.player).filter((a) => a.defId !== "worker").length;
-      const push = pastMid || armySize >= pushSize || world.time > pushTime;
-      dest = push ? { x: enemyBase.x, y: enemyBase.y } : center;
-    }
-  }
-  // Offset đội hình: tank trước, archer sau, soldier giữa.
-  const lane = (u.id % 5 - 2) * TILE * 1.2;
-  let p = findPath(world.map, u.x, u.y, dest.x + lane, dest.y);
-  if (!p || p.length === 0) {
-    // Đã tới nơi (đứng ngay tâm) → push thẳng base địch, không đứng chơi.
-    if (enemyBase && (dest.x !== enemyBase.x || dest.y !== enemyBase.y)) {
-      p = findPath(world.map, u.x, u.y, enemyBase.x, enemyBase.y);
-    }
-  }
-  if (p && p.length > 0) {
-    u.path = p;
-    u.state = "attackMoving";
-  } else if (enemyBase) {
-    // Kẹt đường thì đánh bộ sang hướng địch (separation sẽ đẩy dần).
-    u.state = "attackMoving";
-    u.repathTimer = REPATH;
-  }
-  u.repathTimer = REPATH;
 }

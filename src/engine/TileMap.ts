@@ -9,6 +9,7 @@
  *  5 = ruộng 🌾 (cấm đi, gặt lúa — lúa tự mọc lại)
  *  6 = gốc cây (cấm đi, cây bị đốn sạch — 30s mọc lại thành cây)
  *  7 = cây táo (cấm đi, hái táo vào kho lúa — hết táo tự ra quả lại)
+ *  8 = đường dirt (đi được — trang trí, nối base→mỏ→trung tâm)
  */
 import { TILE } from "./data";
 
@@ -20,6 +21,7 @@ export const T_STONE = 4;
 export const T_FIELD = 5;
 export const T_STUMP = 6;
 export const T_APPLE = 7;
+export const T_ROAD = 8;
 /** Số táo tối đa mỗi cây + tốc độ ra quả lại. */
 export const APPLE_CAP = 50;
 export const APPLE_REGROW_RATE = 1;
@@ -125,11 +127,59 @@ export class TileMap {
         if (!this.inBounds(x, y)) return false;
         const i = this.idx(x, y);
         const t = this.tiles[i];
-        // Nhà chỉ đặt trên cỏ trống (không đè nước/rừng/đá).
+        // Nhà chỉ đặt trên cỏ trống (không đè nước/rừng/đá/đường).
         if (t !== T_GRASS || this.blocked[i] !== 0) return false;
       }
     }
     return true;
+  }
+
+  /**
+   * Trải sân dirt hình chữ nhật (w×h, tâm cx/cy). Chỉ lên ô cỏ trống
+   * (không phá rừng/nước/ruộng, không đè chân nhà).
+   */
+  paintPlaza(cx: number, cy: number, w: number, h: number): void {
+    const x0 = Math.round(cx - w / 2);
+    const y0 = Math.round(cy - h / 2);
+    for (let ty = y0; ty < y0 + h; ty++) {
+      for (let tx = x0; tx < x0 + w; tx++) {
+        if (!this.inBounds(tx, ty)) continue;
+        const i = this.idx(tx, ty);
+        if (this.tiles[i] === T_GRASS && this.blocked[i] === 0) {
+          this.tiles[i] = T_ROAD;
+        }
+      }
+    }
+  }
+
+  /**
+   * Trải đường dirt qua các điểm (nối L từng đoạn). Chỉ lên ô cỏ trống
+   * (không phá rừng/nước/ruộng, không đè chân nhà) — đường đứt quãng
+   * ở chỗ vướng là bình thường.
+   */
+  paintRoad(points: { tx: number; ty: number }[]): void {
+    const lay = (tx: number, ty: number): void => {
+      if (!this.inBounds(tx, ty)) return;
+      const i = this.idx(tx, ty);
+      if (this.tiles[i] === T_GRASS && this.blocked[i] === 0) {
+        this.tiles[i] = T_ROAD;
+      }
+    };
+    for (let s = 0; s + 1 < points.length; s++) {
+      let cx = points[s].tx;
+      let cy = points[s].ty;
+      const ex = points[s + 1].tx;
+      const ey = points[s + 1].ty;
+      while (cx !== ex) {
+        lay(cx, cy);
+        cx += Math.sign(ex - cx);
+      }
+      while (cy !== ey) {
+        lay(cx, cy);
+        cy += Math.sign(ey - cy);
+      }
+      lay(ex, ey);
+    }
   }
 
   /** Rải rừng/đá đối xứng đã mirror ở ngoài — chỉ đặt khi ô còn cỏ. */
