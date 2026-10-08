@@ -73,6 +73,11 @@ export default function GameView({
   const uiRef = useRef<Interaction | null>(null);
   const mouseRef = useRef<{ x: number; y: number } | null>(null);
   const midDrag = useRef<{ x: number; y: number } | null>(null);
+  /** Mốc chạm cuối — mobile bắn chuột GIẢ sau mỗi lần chạm, phải lờ đi
+   *  kẻo edge-pan/chọn nhầm đánh nhau với tay người chơi. */
+  const lastTouchRef = useRef(0);
+  const GHOST_MOUSE_MS = 1200;
+  const justTouched = () => Date.now() - lastTouchRef.current < GHOST_MOUSE_MS;
   const saveApplied = useRef(false);
   const endReported = useRef(false);
   const [session, setSession] = useState(0);
@@ -229,7 +234,7 @@ export default function GameView({
   }, []);
 
   const onMouseDown = (e: React.MouseEvent) => {
-    if (menuOpen) return;
+    if (menuOpen || justTouched()) return;
     const game = gameRef.current!;
     const ui = uiRef.current!;
     if (e.button === 1) {
@@ -243,7 +248,11 @@ export default function GameView({
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
-    const ui = uiRef.current!;
+    // Chuột giả sau chạm (mobile) → xóa vị trí, không cho edge-pan tự trôi map.
+    if (justTouched()) {
+      mouseRef.current = null;
+      return;
+    }    const ui = uiRef.current!;
     const rect = canvasRef.current!.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
@@ -259,7 +268,7 @@ export default function GameView({
   };
 
   const onMouseUp = (e: React.MouseEvent) => {
-    if (e.button === 1) {
+    if (justTouched()) return;    if (e.button === 1) {
       midDrag.current = null;
       return;
     }
@@ -389,6 +398,7 @@ export default function GameView({
   };
 
   const onTouchStart = (e: React.TouchEvent) => {
+    lastTouchRef.current = Date.now();
     if (menuOpen) return;
     const ui = uiRef.current!;
     if (e.touches.length === 2) {
@@ -463,6 +473,8 @@ export default function GameView({
   };
 
   const onTouchEnd = (e: React.TouchEvent) => {
+    lastTouchRef.current = Date.now();
+    mouseRef.current = null; // không cho chuột giả sau đó làm trôi map
     if (menuOpen) return;
     const st = touchState.current;
     if (e.touches.length !== 0) return; // vẫn còn ngón khác → kệ
@@ -603,11 +615,12 @@ export default function GameView({
           ref={miniRef}
           width={176}
           height={176}
-          className="absolute bottom-40 left-2 cursor-pointer rounded border border-zinc-600 md:bottom-28 md:left-3"
+          className="absolute bottom-40 left-2 touch-none cursor-pointer rounded border border-zinc-600 md:bottom-28 md:left-3"
           style={{ width: "min(176px, 30vw)", height: "min(176px, 30vw)" }}
           onMouseDown={miniGoTo}
           onMouseMove={(e) => e.buttons === 1 && miniGoTo(e)}
           onTouchStart={(e) => {
+            lastTouchRef.current = Date.now();
             if (e.touches.length !== 1) return;
             const game = gameRef.current!;
             const ui = uiRef.current!;
