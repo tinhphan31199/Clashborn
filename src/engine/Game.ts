@@ -5,6 +5,7 @@
  * Vòng lặp: auto → movement → combat → economy → fog → sudden death → win.
  */
 import { Command } from "./commands";
+import { resetPathBudget } from "./astar";
 import { BUILDING_DEFS, SUDDEN_DEATH_AT, TILE, UNIT_DEFS } from "./data";
 import { AIController, AIOptions } from "./systems/ai";
 import { autoTick } from "./systems/auto";
@@ -238,6 +239,7 @@ export class Game {
     const w = this.world;
     w.time += dt;
     this.tickCount++;
+    resetPathBudget(); // mở quota A* mới cho tick này (chống giật trận đông)
     w.rebuildSpatial();
     this.ai.update(w, (c) => this.dispatch(c), dt);
     // Xây dựng trước chi tiêu: hạ tầng (nhà/farm) được giữ gỗ trước khi mua lính.

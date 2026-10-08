@@ -67,11 +67,24 @@ const DIRS = [
 ];
 
 /**
+ * Ngân sách A* toàn cục: tối đa N lượt tìm đường mỗi tick.
+ * Trận đông (100+ lính cùng repath) không bao giờ giật — ai hết quota thì
+ * nhận null và thử lại tick sau (mọi caller đều đã xử lý null).
+ */
+let budget = 0;
+export function resetPathBudget(n = 4) {
+  budget = n;
+}
+
+/**
  * Find a path from world (sx,sy) to world (gx,gy).
  * If the goal tile is blocked, searches outward for the nearest passable tile.
- * Returns null when unreachable.
+ * Returns null when unreachable OR when the per-tick budget is exhausted.
  */
 export function findPath(map: TileMap, sx: number, sy: number, gx: number, gy: number): Vec2[] | null {
+  if (budget <= 0) return null; // hết quota tick này → thử lại tick sau
+  budget--;
+
   let gtx = map.worldToTile(gx);
   let gty = map.worldToTile(gy);
   const stx = map.worldToTile(sx);
@@ -110,7 +123,7 @@ export function findPath(map: TileMap, sx: number, sy: number, gx: number, gy: n
   let end: Node | null = null;
   let iterations = 0;
 
-  while (open.size > 0 && iterations++ < 40000) {
+  while (open.size > 0 && iterations++ < 7000) {
     const cur = open.pop()!;
     const ci = cur.y * W + cur.x;
     if (closed[ci]) continue;

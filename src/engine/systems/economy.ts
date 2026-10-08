@@ -517,6 +517,10 @@ function foodTick(world: World, u: Entity, dt: number) {
   }
 
   // 5. Chọn việc: tay không → gặt ruộng chín trước (có ăn ngay), không có thì đi tưới.
+  // Quét map đắt → mỗi worker nghĩ 1s/lần (repathTimer), không quét mỗi tick.
+  u.repathTimer -= dt;
+  if (u.repathTimer > 0) return;
+  u.repathTimer = 1.0;
   if (u.carry === 0) {
     if (goRipeField(world, u)) return;
   }
