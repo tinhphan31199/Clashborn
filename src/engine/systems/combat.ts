@@ -149,8 +149,14 @@ function updateProjectiles(world: World, dt: number) {
     if (d <= Math.max(step, 6) || pr.ttl <= 0) {
       const t = world.get(pr.targetId);
       const attacker = world.get(pr.attackerId);
-      if (t) damageEntity(world, t, pr.damage, attacker ?? undefined);
-      else {
+      if (t) {
+        // Chớp trúng đích (tên không chết mục tiêu vẫn thấy được).
+        world.addEffect({
+          kind: "spark", x1: tx, y1: ty, x2: tx, y2: ty,
+          ttl: 0.15, maxTtl: 0.15, color: pr.color,
+        });
+        damageEntity(world, t, pr.damage, attacker ?? undefined);
+      } else {
         world.addEffect({
           kind: "explosion", x1: tx, y1: ty, x2: tx, y2: ty,
           ttl: 0.2, maxTtl: 0.2, color: "#6b5a43",
