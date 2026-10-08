@@ -8,6 +8,7 @@
  *  4 = đá 🪨 (cấm đi, khai thác, có trữ lượng)
  *  5 = ruộng 🌾 (cấm đi, gặt lúa — lúa tự mọc lại)
  *  6 = gốc cây (cấm đi, cây bị đốn sạch — 30s mọc lại thành cây)
+ *  7 = cây táo (cấm đi, hái táo vào kho lúa — hết táo tự ra quả lại)
  */
 import { TILE } from "./data";
 
@@ -18,6 +19,10 @@ export const T_WOOD = 3;
 export const T_STONE = 4;
 export const T_FIELD = 5;
 export const T_STUMP = 6;
+export const T_APPLE = 7;
+/** Số táo tối đa mỗi cây + tốc độ ra quả lại. */
+export const APPLE_CAP = 50;
+export const APPLE_REGROW_RATE = 1;
 /** Gốc cây mọc lại thành cây sau từng này giây. */
 export const STUMP_REGROW_TIME = 30;
 /** Lúa đạt mức này mới CHÍN VÀNG, gặt được = 3 gáo nước (20/gáo). Ruộng mới khô rang. */
@@ -37,6 +42,8 @@ export class TileMap {
   rice: Float32Array;
   /** máu tối đa của cây (để vẽ HP bar) */
   woodMax: Float32Array;
+  /** số táo trên mỗi cây táo */
+  apples: Float32Array;
   /** đếm ngược gốc cây mọc lại (chỉ nghĩa khi tiles == T_STUMP) */
   stumpTimer: Float32Array;
   /** blocked by buildings per tile */
@@ -51,6 +58,7 @@ export class TileMap {
     this.stone = new Float32Array(w * h);
     this.rice = new Float32Array(w * h);
     this.woodMax = new Float32Array(w * h);
+    this.apples = new Float32Array(w * h);
     this.stumpTimer = new Float32Array(w * h);
     this.blocked = new Uint8Array(w * h);
   }
@@ -77,7 +85,7 @@ export class TileMap {
     if (!this.inBounds(tx, ty)) return false;
     const i = this.idx(tx, ty);
     const t = this.tiles[i];
-    return t !== T_WATER && t !== T_WOOD && t !== T_STONE && t !== T_FIELD && t !== T_STUMP && this.blocked[i] === 0;
+    return t !== T_WATER && t !== T_WOOD && t !== T_STONE && t !== T_FIELD && t !== T_STUMP && t !== T_APPLE && this.blocked[i] === 0;
   }
 
   worldToTile(wx: number): number {
@@ -106,6 +114,7 @@ export class TileMap {
         this.rice[i] = 0;
         this.woodMax[i] = 0;
         this.stumpTimer[i] = 0;
+        this.apples[i] = 0;
       }
     }
   }
@@ -192,8 +201,25 @@ export class TileMap {
     return null;
   }
 
+  /** Rải cây táo (cụm 3-5 cây, đầy táo lúc mới mọc). */
+  scatterApple(rand: () => number, cx: number, cy: number, radius: number) {
+    for (let y = Math.floor(cy - radius); y <= cy + radius; y++) {
+      for (let x = Math.floor(cx - radius); x <= cx + radius; x++) {
+        if (!this.inBounds(x, y)) continue;
+        const d = Math.hypot(x - cx, y - cy);
+        if (d <= radius && rand() > d / (radius + 1)) {
+          const i = this.idx(x, y);
+          if (this.tiles[i] === T_GRASS) {
+            this.tiles[i] = T_APPLE;
+            this.apples[i] = APPLE_CAP;
+          }
+        }
+      }
+    }
+  }
+
   /**
-   * Chỗ đứng khai thác rừng/đá/ruộng: ô cỏ ĐI ĐƯỢC kề ô tài nguyên còn hàng gần nhất.
+   * Chỗ đứng khai thác rừng/đá/ruộng/táo: ô cỏ ĐI ĐƯỢC kề ô tài nguyên còn hàng gần nhất.
    * Trả về {ô đứng} + {ô tài nguyên}. Worker không bao giờ bước vào ô tài nguyên.
    * exclude: bỏ qua 1 ô tài nguyên (khi đường tới đó bị kẹt) để thử chỗ khác.
    */
@@ -203,7 +229,7 @@ export class TileMap {
   ): { tx: number; ty: number; rtx: number; rty: number } | null {
     const stx = this.worldToTile(wx);
     const sty = this.worldToTile(wy);
-    const store = kind === T_WOOD ? this.wood : kind === T_STONE ? this.stone : this.rice;
+    const store = kind === T_WOOD ? this.wood : kind === T_STONE ? this.stone : kind === T_APPLE ? this.apples : this.rice;
     let best: { tx: number; ty: number; rtx: number; rty: number } | null = null;
     let bestD = maxTiles * maxTiles;
     for (let y = Math.max(0, sty - maxTiles); y <= Math.min(this.h - 1, sty + maxTiles); y++) {
@@ -264,6 +290,23 @@ export class TileMap {
       }
     }
     return best;
+  }
+
+  /**
+   * Ô đi được gần nhất (xoắn ốc) — dùng để cứu lính kẹt / tìm chỗ đứng.
+   * Trả về null khi quanh đó toàn vật cản.
+   */
+  nearestPassable(tx: number, ty: number, maxR = 10): { tx: number; ty: number } | null {
+    if (this.passable(tx, ty)) return { tx, ty };
+    for (let r = 1; r <= maxR; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          if (this.passable(tx + dx, ty + dy)) return { tx: tx + dx, ty: ty + dy };
+        }
+      }
+    }
+    return null;
   }
 
   nearestShore(wx: number, wy: number, maxTiles = 48): { tx: number; ty: number; wtx: number; wty: number } | null {    const stx = this.worldToTile(wx);

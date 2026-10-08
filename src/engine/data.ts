@@ -73,8 +73,10 @@ export const TILE = 32;
 
 /** Population cap toàn trận. */
 export const POP_CAP = 20;
-/** Mỗi nhà đã xong +5 pop. */
-export const HOUSE_POP = 5;
+/** Base chỉ nuôi 6 dân — muốn đông phải xây nhà ở. */
+export const BASE_POP = 6;
+/** Mỗi nhà đã xong +7 pop (6 + 7x2 = 20 max). */
+export const HOUSE_POP = 7;
 export const MAX_HOUSES = 2;
 export const MAX_FARMS = 2;
 /** Giây xây xong 1 công trình / 1 thợ. */
@@ -270,7 +272,7 @@ export const BUILDING_DEFS: Record<string, BuildingDef> = {
     income: 0,
     water: 0,
     captureRadius: 0,
-    description: "+5 dân số. Nông dân tự xây khi sắp đầy pop.",
+    description: "BẮT BUỘC đầu tiên: +7 dân số (không nhà chỉ nuôi 6 dân). Xong nhà tặng 2 nông dân.",
   },
   farm: {
     id: "farm",
@@ -287,6 +289,6 @@ export const BUILDING_DEFS: Record<string, BuildingDef> = {
     income: 0,
     water: 0,
     captureRadius: 0,
-    description: "Kho phụ: nộp tại farm +25%. Tưới ruộng quanh farm +50%/gáo (2 gáo là chín).",
+    description: "KHO CHÍNH (cần có nhà mới xây): có farm thì mọi tài nguyên chỉ nộp vào farm. Nộp tại farm +25%, tưới ruộng quanh farm +50%/gáo.",
   },
 };

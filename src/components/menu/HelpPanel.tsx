@@ -62,7 +62,8 @@ export default function HelpPanel({ onBack, inGame }: { onBack: () => void; inGa
             <li><b>🪨 Đá:</b> worker đào đá gánh về base (hết là hết vĩnh viễn).</li>
             <li><b>🌾 Ruộng lúa:</b> ruộng mới khô rang — worker phải <b>múc nước tưới 3 gáo mới chín vàng</b> rồi gặt. Gần farm thì 2 gáo là chín. Lính ăn lúa khi train.</li>
             <li><b>💧 Nước:</b> node/base ra nước, quân uống mỗi giây (tank khát nhất). Hết nước cả phe <b>yếu 30%</b>.</li>
-            <li><b>👥 Population 20:</b> Tank chiếm 3 slot — đừng spam.</li>
+            <li><b>👥 Population 20:</b> Tank chiếm 3 slot — đừng spam. Sắp đầy pop + đủ 50 gỗ là nông dân <b>tự xây 🏠</b> (+5 pop, tối đa 2).</li>
+            <li><b>🚜 Trang trại</b> (tự xây khi gỗ dư 150): kho phụ — nộp tại farm <b>+25%</b>, ruộng quanh farm tưới 2 gáo là chín.</li>
           </ul>
 
           <SectionTitle>🧭 War Council (góc trái trong trận)</SectionTitle>

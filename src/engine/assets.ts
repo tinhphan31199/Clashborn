@@ -10,9 +10,12 @@ export interface FieldArt {
   water: HTMLImageElement | null;
   grass: HTMLImageElement | null;
   base: HTMLImageElement | null;
+  house: HTMLImageElement | null;
+  farm: HTMLImageElement | null;
   field: HTMLImageElement | null;
   stump: HTMLImageElement | null;
   ripe: HTMLImageElement | null;
+  apple: HTMLImageElement | null;
 }
 
 const cache: FieldArt = {
@@ -22,9 +25,12 @@ const cache: FieldArt = {
   water: null,
   grass: null,
   base: null,
+  house: null,
+  farm: null,
   field: null,
   stump: null,
   ripe: null,
+  apple: null,
 };
 
 let started = false;
@@ -60,9 +66,12 @@ export function fieldArt(): FieldArt {
     loadOne("water", "/assets/water-tile.png");
     loadOne("grass", "/assets/grass-tile.png");
     loadOne("base", "/assets/base.png");
+    loadOne("house", "/assets/house.png");
+    loadOne("farm", "/assets/farm.png");
     loadOne("field", "/assets/field-tile.png");
     loadOne("stump", "/assets/stump-tile.png");
     loadOne("ripe", "/assets/field-ripe.png");
+    loadOne("apple", "/assets/apple-tree.png");
   }
   return cache;
 }

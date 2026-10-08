@@ -3,7 +3,7 @@
  * Vẽ base 🏰, node 💎 (vòng chủ + income), lính bằng icon + vòng team.
  */
 import { BUILDING_DEFS, TILE, UNIT_DEFS } from "./data";
-import { RICE_RIPE_AT, T_FIELD, T_GRASS, T_ORE, T_STONE, T_STUMP, T_WATER, T_WOOD } from "./TileMap";
+import { APPLE_CAP, RICE_RIPE_AT, T_APPLE, T_FIELD, T_GRASS, T_ORE, T_STONE, T_STUMP, T_WATER, T_WOOD } from "./TileMap";
 import { fieldArt, unitFrames } from "./assets";
 import { Game, HUMAN } from "./Game";
 import { Interaction } from "./input";
@@ -99,6 +99,34 @@ export function renderGame(
           ctx.fillStyle = "rgba(0,0,0,0.7)";
           ctx.fillRect(px + 4, py + 2, TILE - 8, 4);
           ctx.fillStyle = pct > 0.5 ? "#4ade80" : pct > 0.25 ? "#fbbf24" : "#ef4444";
+          ctx.fillRect(px + 4, py + 2, (TILE - 8) * pct, 4);
+        }
+      } else if (t === T_APPLE) {
+        // Cây táo: cỏ lót + sprite táo (hết quả thì hiện cây trơ trụi).
+        if (art.grass) {
+          ctx.drawImage(art.grass, px, py, TILE, TILE);
+        } else {
+          ctx.fillStyle = "#2d5a27";
+          ctx.fillRect(px, py, TILE, TILE);
+        }
+        const apples = map.apples[map.idx(tx, ty)];
+        const fruitSprite = apples > 0 ? art.apple : art.tree;
+        if (fruitSprite) {
+          ctx.drawImage(fruitSprite, px - 16, py - 32, 64, 64);
+        } else {
+          ctx.fillStyle = apples > 0 ? "#c0392b" : "#2e7d32";
+          ctx.beginPath();
+          ctx.arc(px + TILE / 2, py + 10, 8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#5b3a1e";
+          ctx.fillRect(px + TILE / 2 - 2, py + 14, 4, 12);
+        }
+        // Thanh quả: vơi dần khi bị hái.
+        if (apples < APPLE_CAP) {
+          const pct = Math.max(0, apples / APPLE_CAP);
+          ctx.fillStyle = "rgba(0,0,0,0.7)";
+          ctx.fillRect(px + 4, py + 2, TILE - 8, 4);
+          ctx.fillStyle = pct > 0.5 ? "#ef4444" : pct > 0.25 ? "#fbbf24" : "#a8a29e";
           ctx.fillRect(px + 4, py + 2, (TILE - 8) * pct, 4);
         }
       } else if (t === T_STONE) {
@@ -370,9 +398,11 @@ function drawNodeOrBase(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
     // thành chính bằng sprite (vừa khít ô 4x4)
     ctx.drawImage(art.base, px, py, wpx, hpx);
   } else if (e.defId === "house") {
-    drawHouse(ctx, px, py, wpx, hpx, e.underConstruction ? e.buildProgress : 1);
+    if (art.house && !e.underConstruction) ctx.drawImage(art.house, px, py, wpx, hpx);
+    else drawHouse(ctx, px, py, wpx, hpx, e.underConstruction ? e.buildProgress : 1);
   } else if (e.defId === "farm") {
-    drawFarm(ctx, px, py, wpx, hpx, e.underConstruction ? e.buildProgress : 1);
+    if (art.farm && !e.underConstruction) ctx.drawImage(art.farm, px, py, wpx, hpx);
+    else drawFarm(ctx, px, py, wpx, hpx, e.underConstruction ? e.buildProgress : 1);
   } else {
     ctx.fillText(isBase ? "🏰" : "💎", px + wpx / 2, py + hpx / 2 + (isBase ? 12 : 8));
   }
@@ -471,6 +501,7 @@ export function renderMinimap(
       } else {
         const t = map.tiles[map.idx(tx, ty)];
         if (t === T_WOOD) ctx.fillStyle = "#2d5a27";
+        else if (t === T_APPLE) ctx.fillStyle = "#3d6b35";
         else if (t === T_STONE) ctx.fillStyle = "#6b6b6b";
         else if (t === T_FIELD) ctx.fillStyle = map.rice[map.idx(tx, ty)] >= RICE_RIPE_AT ? "#c9a227" : "#5a6b2f";
         else if (t === T_STUMP) ctx.fillStyle = "#5a4a28";

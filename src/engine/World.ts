@@ -3,10 +3,10 @@
  *
  * - Map đối xứng gương: 2 base hai đầu, 5 node ở giữa.
  * - Không còn ore tile — Gold đến từ node bị chiếm + thu nhập nền của base.
- * - supplyCap = POP_CAP hằng số (20). Không xây nhà.
+ * - supplyCap = 6 base + 7 mỗi nhà đã xong (max 20). Không nhà khỏi đẻ quân.
  */
 import { TileMap, makeRng } from "./TileMap";
-import { BUILDING_DEFS, POP_CAP, HOUSE_POP, TILE, UNIT_DEFS } from "./data";
+import { BASE_POP, BUILDING_DEFS, HOUSE_POP, TILE, UNIT_DEFS } from "./data";
 import { Effect, Entity, EntityId, EntityKind, PlayerId, PlayerState, Projectile, Vec2 } from "./types";
 
 export const MAP_W = 96;
@@ -55,11 +55,11 @@ export class World {
   addPlayer(id: PlayerId, name: string, color: string, ore: number) {
     this.players.push({
       id, name, color, ore, alive: true,
-      supplyUsed: 0, supplyCap: POP_CAP, income: 0,
+      supplyUsed: 0, supplyCap: BASE_POP, income: 0,
       rallyX: (MAP_W * TILE) / 2, rallyY: (MAP_H * TILE) / 2,
       ecoMil: 0.5, defAtk: 0.5, focus: "auto", autoSpend: false,
       water: 25, waterIncome: 0,
-      wood: 40, stone: 20,
+      wood: 60, stone: 20, // 60 gỗ = đủ xây ngay nhà đầu tiên
       food: 60,
       needs: { gold: 1, wood: 1, stone: 1, water: 1, food: 1 },
     });
@@ -116,6 +116,7 @@ export class World {
     // Đá: ít, ven map + 1 cụm giữa (tranh chấp muộn).
     const rocks: [number, number, number][] = [
       [12, 48, 4], [48, 20, 4], [44, 52, 4],
+      [28, 16, 3], // đá gần base (farm cần 25 đá — cuốc gần cho kịp)
     ];
     for (const [cx, cy, r] of rocks) {
       map.scatterStone(rand, cx, cy, r, 100);
@@ -130,6 +131,15 @@ export class World {
       map.scatterField(rand, cx, cy, r, 100);
       const [mx, my] = mirror(cx, cy);
       map.scatterField(rand, mx, my, r, 100);
+    }
+    // Cây táo: cụm nhỏ gần base (ăn ngay) + 1 cặp giữa map (tranh chấp).
+    const apples: [number, number, number][] = [
+      [26, 22, 2], [18, 40, 2], [46, 36, 2],
+    ];
+    for (const [cx, cy, r] of apples) {
+      map.scatterApple(rand, cx, cy, r);
+      const [mx, my] = mirror(cx, cy);
+      map.scatterApple(rand, mx, my, r);
     }
     // Đảm bảo thông đường: base xanh tới được base đỏ + 5 node + tâm.
     // Thiếu là phạt: lính không bao giờ kẹt bên kia tường cây/đá.
@@ -179,6 +189,7 @@ export class World {
             map.rice[i] = 0;
             map.woodMax[i] = 0;
             map.stumpTimer[i] = 0;
+            map.apples[i] = 0;
           }
         }
       };
@@ -266,6 +277,8 @@ export class World {
     e.buildProgress = 1;
     e.hp = e.maxHp;
     this.map.setBlockedRect(tx, ty, def.w, def.h, 1);
+    // Nhà mới không được đè lên lính: ai đứng trong chân móng thì dạt ra ô thoáng.
+    this.rescueTrappedUnits();
     this.entities.set(e.id, e);
     return e;
   }
@@ -322,11 +335,32 @@ export class World {
     return this.entities.get(id);
   }
 
-  /** Recompute supplyUsed; cap = POP_CAP + 5 mỗi nhà đã xong. */
+  /**
+   * Cứu lính kẹt trong vật cản (nhà mới xây đè lên, cây mọc đè lên...):
+   * dịch ra tâm ô đi được gần nhất. Trả về số lính đã cứu.
+   * Game gọi định kỳ làm lưới an toàn cuối cùng.
+   */
+  rescueTrappedUnits(): number {
+    let saved = 0;
+    for (const e of this.entities.values()) {
+      if (e.kind !== "unit") continue;
+      const tx = this.map.worldToTile(e.x);
+      const ty = this.map.worldToTile(e.y);
+      if (this.map.passable(tx, ty)) continue;
+      const free = this.map.nearestPassable(tx, ty, 12);
+      if (!free) continue;
+      e.x = this.map.tileToWorldCenter(free.tx);
+      e.y = this.map.tileToWorldCenter(free.ty);
+      saved++;
+    }
+    return saved;
+  }
+
+  /** Recompute supplyUsed; cap = 6 base + 7 mỗi nhà đã xong (max 20). */
   recomputeSupply() {
     for (const p of this.players) {
       p.supplyUsed = 0;
-      p.supplyCap = POP_CAP;
+      p.supplyCap = BASE_POP;
     }
     const byId = new Map(this.players.map((p) => [p.id, p]));
     for (const e of this.entities.values()) {
@@ -562,6 +596,7 @@ export class World {
         rice: Array.from(this.map.rice),
         woodMax: Array.from(this.map.woodMax),
         stumpTimer: Array.from(this.map.stumpTimer),
+        apples: Array.from(this.map.apples),
         blocked: Array.from(this.map.blocked),
       },
     });
@@ -587,6 +622,7 @@ export class World {
       if (d.map.rice) w.map.rice.set(d.map.rice);
       if (d.map.woodMax) w.map.woodMax.set(d.map.woodMax);
       if (d.map.stumpTimer) w.map.stumpTimer.set(d.map.stumpTimer);
+      if (d.map.apples) w.map.apples.set(d.map.apples);
       w.map.blocked.set(d.map.blocked);
     }
     w.rebuildSpatial();

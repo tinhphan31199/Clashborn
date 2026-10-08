@@ -1,8 +1,10 @@
 /**
- * ConstructionSystem — nông dân TỰ xây nhà + trang trại bằng gỗ/đá.
+ * ConstructionSystem — CHUỖI BẮT BUỘC: nhà ở trước, farm sau.
  *
- *  Nhà (50 gỗ): +5 pop mỗi cái (tối đa 2) — tự khởi công khi sắp đầy dân.
- *  Trang trại (100 gỗ + 25 đá): kho phụ + buff (xem economy) — tự xây khi gỗ dư.
+ *  1. Nhà (50 gỗ): BẮT BUỘC đầu tiên — đủ gỗ là khởi công ngay, không chờ.
+ *     Base chỉ nuôi 6 dân, mỗi nhà +7 (tối đa 2 → 20). Xong nhà tặng 2 nông dân.
+ *  2. Farm (100 gỗ + 25 đá): chỉ xây khi đã có nhà. Có farm rồi thì mọi tài
+ *     nguyên CHỈ nộp vào farm (mất farm mới về base). Nộp tại farm +25%.
  *
  * Móng (underConstruction) yếu, cần thợ đứng cạnh xây 15s. Thợ chết/bỏ chạy
  * thì tick sau cử thợ khác — load save cũng tự cử lại nên không cần serialize.
@@ -24,6 +26,16 @@ export function finishedBuildings(world: World, player: PlayerId, defId: string)
     }
   }
   return out;
+}
+
+/** Có móng loại này đang xây dở không (tránh khởi công trùng). */
+function underConstruction(world: World, player: PlayerId, defId: string): boolean {
+  for (const e of world.entities.values()) {
+    if (e.kind === "building" && e.defId === defId && e.player === player && e.underConstruction) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function constructionTick(world: World, dt: number) {
@@ -55,14 +67,28 @@ function maybeStart(world: World, player: PlayerId) {
   if (!base) return;
 
   let defId: string | null = null;
-  if (houses < MAX_HOUSES && pl.supplyUsed >= pl.supplyCap - 2 && pl.wood >= (BUILDING_DEFS.house.wood ?? 0)) {
+  const workers = world.unitsOf(player).filter((u) => u.defId === "worker").length;
+  const houseCost = BUILDING_DEFS.house.wood ?? 0;
+  const farmCostW = BUILDING_DEFS.farm.wood ?? 0;
+  const farmCostS = BUILDING_DEFS.farm.stone ?? 0;
+  const housesTotal = houses + (underConstruction(world, player, "house") ? 1 : 0);
+  if (housesTotal === 0 && pl.wood >= houseCost && workers >= 1) {
+    // BẮT BUỘC: chưa có nhà nào thì đủ gỗ là xây ngay, không chờ gì hết.
+    defId = "house";
+  } else if (houses < MAX_HOUSES && pl.wood >= houseCost &&
+      (pl.supplyUsed >= pl.supplyCap - 2 ||
+       (world.time > 150 && houses === 0 && workers >= 3))) {
+    // Nhà 2 khi sắp đầy pop (nhà 1 đã có từ bước bắt buộc trên).
     defId = "house";
   } else if (
+    houses >= 1 &&
     farms < MAX_FARMS &&
-    pl.wood >= FARM_WOOD_STOCK &&
-    pl.wood >= (BUILDING_DEFS.farm.wood ?? 0) &&
-    (pl.stone ?? 0) >= (BUILDING_DEFS.farm.stone ?? 0)
+    (pl.wood >= FARM_WOOD_STOCK ||
+     (world.time > 300 && farms === 0 && pl.wood >= farmCostW)) &&
+    pl.wood >= farmCostW &&
+    (pl.stone ?? 0) >= farmCostS
   ) {
+    // Farm CHỈ xây khi đã có nhà: gỗ dư HOẶC sau 5:00 chưa có farm nào.
     defId = "farm";
   }
   if (!defId) return;
@@ -191,6 +217,18 @@ function completeSite(world: World, site: Entity, builder: Entity) {
     builder.state = "idle";
     builder.targetId = null;
     builder.path = [];
+  }
+  // Nhà xong: +2 nông dân miễn phí dọn vào ở (spawn quanh nhà mới).
+  if (site.defId === "house") {
+    for (let i = 0; i < 2; i++) {
+      const s = world.findSpawnNear(site.x + (i === 0 ? -TILE : TILE), site.y);
+      const u = world.spawnUnit("worker", site.player, s.x, s.y);
+      u.job = "node";
+      world.addEffect({
+        kind: "spark", x1: u.x, y1: u.y, x2: u.x, y2: u.y,
+        ttl: 0.6, maxTtl: 0.6, color: "#7CFC00",
+      });
+    }
   }
   world.recomputeSupply(); // nhà xong → cap tăng ngay
   world.addEffect({

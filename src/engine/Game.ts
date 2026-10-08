@@ -240,18 +240,22 @@ export class Game {
     this.tickCount++;
     w.rebuildSpatial();
     this.ai.update(w, (c) => this.dispatch(c), dt);
+    // Xây dựng trước chi tiêu: hạ tầng (nhà/farm) được giữ gỗ trước khi mua lính.
+    constructionTick(w, dt);
     this.autoSpendTick(w, dt);
     autoTick(w, dt);
     movementTick(w, dt);
     combatTick(w, dt);
     economyTick(w, dt);
-    constructionTick(w, dt);
     fogTick(w);
     for (let i = w.effects.length - 1; i >= 0; i--) {
       w.effects[i].ttl -= dt;
       if (w.effects[i].ttl <= 0) w.effects.splice(i, 1);
     }
     if (this.tickCount % 30 === 0) w.recomputeSupply();
+    // Lưới an toàn cuối cùng: mỗi giây vớt 1 lần lính kẹt trong vật cản
+    // (nhà xây đè lên, cây mọc đè lên...) ra ô thoáng gần nhất.
+    if (this.tickCount % 60 === 0) w.rescueTrappedUnits();
 
     // Sudden death: x2 gold (trong economy) + base mất 1% HP / 5s.
     // Có thể tắt ở menu setup (đánh giao hữu không giới hạn giờ).

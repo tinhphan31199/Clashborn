@@ -5,7 +5,7 @@
  *  Phân vai worker theo Nhu cầu (needs) của War Council mỗi tick.
  */
 import { BUILDING_DEFS, TILE, UNIT_DEFS } from "../data";
-import { RICE_RIPE_AT, STUMP_REGROW_TIME, T_FIELD, T_GRASS, T_STONE, T_STUMP, T_WATER, T_WOOD } from "../TileMap";
+import { RICE_RIPE_AT, STUMP_REGROW_TIME, T_APPLE, T_FIELD, T_GRASS, T_STONE, T_STUMP, T_WATER, T_WOOD } from "../TileMap";
 import { findPath } from "../astar";
 import { finishedBuildings } from "./construction";
 import { Entity, NeedWeights, WorkerJob } from "../types";
@@ -77,15 +77,30 @@ function regrowTick(world: World, dt: number) {
   const { map } = world;
   for (let i = 0; i < map.tiles.length; i++) {
     if (map.tiles[i] !== T_STUMP) continue;
-      map.stumpTimer[i] -= dt;
-      if (map.stumpTimer[i] <= 0) {
-        // Mọc lại thành cây đầy máu.
-        map.tiles[i] = T_WOOD;
-        map.wood[i] = map.woodMax[i] > 0 ? map.woodMax[i] : 100;
-        map.stumpTimer[i] = 0;
+    map.stumpTimer[i] -= dt;
+    if (map.stumpTimer[i] <= 0) {
+      // Có lính đứng trên gốc thì chờ — không mọc cây đè lên lính.
+      const tx = i % map.w;
+      const ty = Math.floor(i / map.w);
+      let occupied = false;
+      for (const u of world.entities.values()) {
+        if (u.kind !== "unit") continue;
+        if (map.worldToTile(u.x) === tx && map.worldToTile(u.y) === ty) {
+          occupied = true;
+          break;
+        }
       }
+      if (occupied) {
+        map.stumpTimer[i] = 0.5; // thử lại sau
+        continue;
+      }
+      // Mọc lại thành cây đầy máu.
+      map.tiles[i] = T_WOOD;
+      map.wood[i] = map.woodMax[i] > 0 ? map.woodMax[i] : 100;
+      map.stumpTimer[i] = 0;
     }
   }
+}
 
 // ---------------------------------------------------------- phân vai
 
@@ -312,7 +327,6 @@ function nearTile(world: World, u: Entity, tx: number, ty: number, r: number): b
   return dx <= r && dy <= r;
 }
 
-/** Worker có đứng gần ô (tx,ty) trong bán kính r tiles không? */
 /**
  * Não lúa: worker vừa làm thủy lợi vừa làm nông dân.
  *  Múc nước ở hồ → tưới ruộng khát (+20/gáo, 3 gáo là chín) → gặt lúa chín gánh về.
@@ -518,7 +532,8 @@ function foodTick(world: World, u: Entity, dt: number) {
   sendToSource(world, u, "water");
 }
 
-/** Điểm nộp hàng: base + các trang trại đã xong. */
+/** Điểm nộp hàng: CÓ farm thì CHỈ nộp farm (kho chính, +25%).
+ *  Chưa có / mất farm mới nộp base. */
 interface Drop {
   x: number;
   y: number;
@@ -527,10 +542,12 @@ interface Drop {
 
 function dropoffs(world: World, player: number): Drop[] {
   const out: Drop[] = [];
-  const base = world.baseOf(player);
-  if (base) out.push({ x: base.x, y: base.y, farm: false });
   for (const f of finishedBuildings(world, player, "farm")) {
     out.push({ x: f.x, y: f.y, farm: true });
+  }
+  if (out.length === 0) {
+    const base = world.baseOf(player);
+    if (base) out.push({ x: base.x, y: base.y, farm: false });
   }
   return out;
 }
@@ -591,13 +608,20 @@ function gatherAt(world: World, u: Entity, res: WorkerJob, dt: number) {
       sendToSource(world, u, res);
       return;
     }
-    const kind = res === "wood" ? T_WOOD : res === "stone" ? T_STONE : T_FIELD;
-    const store = res === "wood" ? world.map.wood : res === "stone" ? world.map.stone : world.map.rice;
-    if (world.map.tileAt(tx, ty) !== kind || store[world.map.idx(tx, ty)] <= 0) {
+    const kind = world.map.tileAt(tx, ty);
+    const store =
+      kind === T_WOOD ? world.map.wood
+      : kind === T_STONE ? world.map.stone
+      : kind === T_APPLE ? world.map.apples
+      : world.map.rice;
+    if (
+      (kind !== T_WOOD && kind !== T_STONE && kind !== T_FIELD && kind !== T_APPLE) ||
+      store[world.map.idx(tx, ty)] <= 0
+    ) {
       sendToSource(world, u, res);
       return;
     }
-    if (res === "food" && !isRipe(store[world.map.idx(tx, ty)])) {
+    if (kind === T_FIELD && !isRipe(store[world.map.idx(tx, ty)])) {
       sendToSource(world, u, res); // lúa xanh chưa gặt được → tìm đám chín
       return;
     }
