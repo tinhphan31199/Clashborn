@@ -52,6 +52,8 @@ AI (tướng đỏ) → auto (não từng lính) → movement → combat → eco
   archer bắn tên projectile, tank splash, base tự bắn, veterancy ★/★★.
 - `systems/economy.ts` — capture node + phát gold/s (x2 khi sudden death).
 - Sudden death sau 10:00: gold x2 + base mất máu (1%/5s, 3%/5s sau 12:00).
+- Tự thoát kẹt: nhà xây/cây mọc không đè lên lính (dạt ra ô thoáng), waypoint
+  thối tự bỏ, đứng yên 3s tìm đường lại / 6s lách ra, mỗi giây vớt lính kẹt 1 lần.
 
 ## Commands (tướng chỉ ra ý đồ)
 
