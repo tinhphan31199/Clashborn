@@ -30,6 +30,16 @@ START → spawn Worker → Gold → spawn quân → tranh mỏ → giao chiến 
 
 Population cap 20. Base 🏰 2000 HP (có pháo tự vệ). Phá base địch → thắng.
 
+| Công trình | Giá | Vai trò |
+|---|---|---|
+| 🏠 Nhà (2×2) | 50🪵 | +7 pop, xong tặng 2 nông dân. Agent xây đầu tiên. |
+| 🌾 Farm (3×3) | 100🪵 + 25🪨 | Kho chính (+25% nộp), tưới +50%/gáo quanh farm. Xây ngay sau nhà. |
+| 🗼 Tháp canh (1×2) | 75🪵 + 25🪨 | Pháo tự vệ (tầm 6, 18 dmg). Dựng khi base bị đánh / giữa game. |
+| 🏪 Chợ (2×2) | 100🪵 | +4 vàng/s khi gỗ dư. |
+| 🪣 Giếng (2×2) | 50🪵 | +1.5 nước/s khi khát / giữa game. |
+
+Xây cần thợ đứng cạnh (tối thiểu 1, tối đa 3 — 1 thợ 15s · 2 thợ ~9s · 3 thợ ~7s). Tới nơi tính từ mép móng.
+
 ## Map đối xứng — 5 node
 
 ```
@@ -95,6 +105,13 @@ Cây có **thanh máu**, đốn sạch thành **gốc cây** (sprite riêng), **
 Gánh từ hồ về kho (tối đa 40), quân uống mỗi giây
 (worker 0.1 · lính 0.15 · tank 0.3/s, base cho 0.5/s).
 Hết nước cả phe **chậm + yếu 30%** — quân đông mà ít worker nước là tự khát.
+
+## 👹 Quái tinh anh giữ rừng
+
+Mỗi cụm rừng (≥10 ô gỗ) có **1 👹 đứng ở trung tâm**. Worker/lính lại gần
+tâm rừng 6 ô là bị đánh; chạy ra khỏi rừng (quá bán kính rừng + 3 ô) thì
+nó thôi đuổi, về nhà hồi máu. Chết mọc lại sau 90s. Hạ được **+85 vàng**.
+380 HP / 26 dmg — đốn gỗ sớm cần đi đông hoặc rỉa từ xa.
 
 ## Chạy
 

@@ -7,6 +7,7 @@
  * kèm hồi máu, scale HP theo thời gian trận.
  */
 import { MONSTER, TILE, UNIT_DEFS } from "../data";
+import { T_WOOD } from "../TileMap";
 import { findPath } from "../astar";
 import { dungeonZones, World } from "../World";
 import { isSurging } from "./monsterDirector";
@@ -62,7 +63,7 @@ export function monsterScale(world: World): number {
   return 1 + Math.min(1, world.time / 600);
 }
 
-export function monsterTick(world: World) {
+export function monsterTick(world: World, dt = 1 / 60) {
   const zones = dungeonZones();
   // A. giữ quân số + respawn
   zones.forEach((z, zi) => {
@@ -78,9 +79,10 @@ export function monsterTick(world: World) {
     });
     growDungeon(world, zi, z);
   });
-  // B. aggro + leash
+  // B. aggro + leash (quái giữ rừng do guardianTick lo riêng).
   for (const e of world.entities.values()) {
     if (e.kind !== "unit" || e.player !== MONSTER) continue;
+    if (e.defId === "warden") continue;
     const homeX = e.patrolAx;
     const homeY = e.patrolAy;
     const homeWx = world.map.tileToWorldCenter(homeX);
@@ -88,7 +90,7 @@ export function monsterTick(world: World) {
     const homeD = Math.hypot(homeWx - e.x, homeWy - e.y) / TILE;
     // Về tới hang → nghỉ + hồi đầy.
     if (homeD < 1.5 && e.state !== "attacking") {
-      if (e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.05);
+      if (e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.03 * dt);
       if (e.state === "moving" && e.path.length === 0) e.state = "idle";
       continue;
     }
@@ -110,7 +112,11 @@ export function monsterTick(world: World) {
       }
     }
   }
+  // C. quái tinh anh giữ rừng (mỗi khu rừng 1 con ở trung tâm).
+  guardianTick(world);
 }
+
+/** Quái tinh anh giữ rừng: 1 con mỗi cụm rừng (≥10 ô gỗ). */
 
 /** Sinh sôi + tràn hang: 30s đẻ thêm 1 con tới khi đầy, đầy thì tràn ra cửa. */
 function growDungeon(world: World, zi: number, z: { x: number; y: number; w: number; h: number; cx: number; cy: number }) {
@@ -213,4 +219,129 @@ function spawnMonster(world: World, defId: string, tx: number, ty: number) {
   e.state = "idle";
   e.path = [];
   e.targetId = null;
+}
+
+/** Quái tinh anh giữ rừng: 1 con mỗi cụm rừng (≥10 ô gỗ). */
+const WARDEN_MIN_WOOD = 10;
+/** Lại gần trung tâm rừng từng này ô là bị đánh. */
+const WARDEN_AGGRO = 6;
+/** Chết thì mọc lại sau từng này giây. */
+const WARDEN_RESPAWN = 90;
+
+interface WardenHome {
+  tx: number;
+  ty: number;
+  /** bán kính rừng + margin: ra quá xa tâm thì thôi đuổi. */
+  leash: number;
+}
+
+const wardenHomes = new WeakMap<World, WardenHome[]>();
+
+function guardianTick(world: World): void {
+  let homes = wardenHomes.get(world);
+  if (!homes) {
+    homes = findForestHomes(world);
+    wardenHomes.set(world, homes);
+  }
+  for (const h of homes) {
+    const live = monsterAt(world, h.tx, h.ty);
+    if (!live || live.defId !== "warden") {
+      if (!live) {
+        if ((respawnAt.get(`warden:${h.tx},${h.ty}`) ?? 0) > world.time) continue;
+        spawnMonster(world, "warden", h.tx, h.ty);
+        respawnAt.set(`warden:${h.tx},${h.ty}`, world.time + WARDEN_RESPAWN);
+      }
+      continue;
+    }
+    const hx = world.map.tileToWorldCenter(h.tx);
+    const hy = world.map.tileToWorldCenter(h.ty);
+    if (live.state === "attacking") {
+      const t = world.get(live.targetId);
+      if (!t || t.hp <= 0) {
+        live.targetId = null;
+        live.state = "idle";
+        live.path = [];
+        continue;
+      }
+      // Ra khỏi khu rừng (quá xa tâm) thì thôi đuổi, về nhà.
+      if (Math.hypot(t.x - hx, t.y - hy) > h.leash * TILE) {
+        live.targetId = null;
+        live.state = "moving";
+        live.path = findPath(world.map, live.x, live.y, hx, hy) ?? [];
+        continue;
+      }
+      continue; // combatTick lo đánh
+    }
+    // Về tới nhà → nghỉ + hồi máu (vẫn canh chừng bên dưới).
+    const homeD = Math.hypot(hx - live.x, hy - live.y) / TILE;
+    if (homeD < 1.5) {
+      if (live.hp < live.maxHp) live.hp = Math.min(live.maxHp, live.hp + live.maxHp * 0.03 / 60);
+      if (live.state === "moving" && live.path.length === 0) live.state = "idle";
+    }
+    // Ai (worker/lính) lại gần trung tâm rừng thì đánh.
+    if (live.state === "idle" && live.path.length === 0) {
+      const prey = nearestPrey(world, hx, hy, WARDEN_AGGRO * TILE);
+      if (prey) {
+        live.targetId = prey.id;
+        live.state = "attacking";
+        live.path = [];
+      }
+    }
+  }
+}
+
+/** Quét các cụm rừng (BFS ô gỗ 4 hướng), trả vị trí đứng cho quái giữ rừng. */
+function findForestHomes(world: World): WardenHome[] {
+  const map = world.map;
+  const seen = new Uint8Array(map.w * map.h);
+  const homes: WardenHome[] = [];
+  const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (let i = 0; i < map.tiles.length; i++) {
+    if (map.tiles[i] !== T_WOOD || seen[i]) continue;
+    const cells: number[] = [i];
+    seen[i] = 1;
+    for (let k = 0; k < cells.length; k++) {
+      const c = cells[k];
+      const cx = c % map.w;
+      const cy = Math.floor(c / map.w);
+      for (const d of nb) {
+        const nx = cx + d[0];
+        const ny = cy + d[1];
+        if (!map.inBounds(nx, ny)) continue;
+        const ni = map.idx(nx, ny);
+        if (!seen[ni] && map.tiles[ni] === T_WOOD) {
+          seen[ni] = 1;
+          cells.push(ni);
+        }
+      }
+    }
+    if (cells.length < WARDEN_MIN_WOOD) continue;
+    let sx = 0;
+    let sy = 0;
+    for (const c of cells) {
+      sx += c % map.w;
+      sy += Math.floor(c / map.w);
+    }
+    const ccx = sx / cells.length;
+    const ccy = sy / cells.length;
+    let rad = 0;
+    for (const c of cells) {
+      rad = Math.max(rad, Math.hypot((c % map.w) - ccx, Math.floor(c / map.w) - ccy));
+    }
+    // Ô đi được gần tâm nhất (quái không đứng trong rừng được).
+    let best: { tx: number; ty: number } | null = null;
+    for (let r = 0; r <= 8 && !best; r++) {
+      for (let dy = -r; dy <= r && !best; dy++) {
+        for (let dx = -r; dx <= r && !best; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const tx = Math.round(ccx) + dx;
+          const ty = Math.round(ccy) + dy;
+          if (map.passable(tx, ty)) best = { tx, ty };
+        }
+      }
+    }
+    if (!best) continue;
+    homes.push({ tx: best.tx, ty: best.ty, leash: Math.ceil(rad) + 3 });
+  }
+  return homes;
 }

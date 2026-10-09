@@ -10,6 +10,7 @@ export interface FieldArt {
   water: HTMLImageElement | null;
   grass: HTMLImageElement | null;
   base: HTMLImageElement | null;
+  guild: HTMLImageElement | null;
   house: HTMLImageElement | null;
   farm: HTMLImageElement | null;
   field: HTMLImageElement | null;
@@ -25,6 +26,7 @@ const cache: FieldArt = {
   water: null,
   grass: null,
   base: null,
+  guild: null,
   house: null,
   farm: null,
   field: null,
@@ -66,6 +68,7 @@ export function fieldArt(): FieldArt {
     loadOne("water", "/assets/water-tile.png");
     loadOne("grass", "/assets/grass-tile.png");
     loadOne("base", "/assets/base.png");
+    loadOne("guild", "/assets/guild.png");
     loadOne("house", "/assets/house.png");
     loadOne("farm", "/assets/farm.png");
     loadOne("field", "/assets/field-tile.png");
@@ -145,12 +148,12 @@ export function miniArt(): MiniArt {
     });
     loadMiniImg("/assets/mini/house-cyan.png", (img) => { miniCache.houseCyan = img; });
     loadMiniImg("/assets/mini/house-red.png", (img) => { miniCache.houseRed = img; });
-    loadMiniImg("/assets/mini/tower-cyan.png", (img) => { miniCache.towerCyan = img; });
-    loadMiniImg("/assets/mini/tower-red.png", (img) => { miniCache.towerRed = img; });
-    loadMiniImg("/assets/mini/market-cyan.png", (img) => { miniCache.marketCyan = img; });
-    loadMiniImg("/assets/mini/market-red.png", (img) => { miniCache.marketRed = img; });
-    loadMiniImg("/assets/mini/well-cyan.png", (img) => { miniCache.wellCyan = img; });
-    loadMiniImg("/assets/mini/well-red.png", (img) => { miniCache.wellRed = img; });
+    loadMiniImg("/assets/mini/tower-cyan.png?v=2", (img) => { miniCache.towerCyan = img; });
+    loadMiniImg("/assets/mini/tower-red.png?v=2", (img) => { miniCache.towerRed = img; });
+    loadMiniImg("/assets/mini/market-cyan.png?v=2", (img) => { miniCache.marketCyan = img; });
+    loadMiniImg("/assets/mini/market-red.png?v=2", (img) => { miniCache.marketRed = img; });
+    loadMiniImg("/assets/mini/well-cyan.png?v=2", (img) => { miniCache.wellCyan = img; });
+    loadMiniImg("/assets/mini/well-red.png?v=2", (img) => { miniCache.wellRed = img; });
     [0, 1, 2, 3, 4, 5].forEach((i) => {
       loadMiniImg(`/assets/mini/road-${i}.png`, (img) => { miniCache.road[i] = img; });
     });
@@ -172,6 +175,7 @@ const MONSTER_FILES: Record<string, string> = {
   skeleton: "skeleton.png",
   demon: "demon.png",
   dragon: "dragon.png",
+  warden: "warden.png",
 };
 
 const monsterCache: Record<string, HTMLImageElement | null> = {};
@@ -192,10 +196,36 @@ export function monsterArt(): Record<string, HTMLImageElement | null> {
   return monsterCache;
 }
 
+/** Sprite thú rừng trung lập (1 frame đứng mỗi loại). */
+const CRITTER_FILES: Record<string, string> = {
+  boar: "boar.png",
+  sheep: "sheep.png",
+  chicken: "chicken.png",
+};
+
+const critterCache: Record<string, HTMLImageElement | null> = {};
+let critterStarted = false;
+
+export function critterArt(): Record<string, HTMLImageElement | null> {
+  if (typeof window === "undefined") return critterCache;
+  if (!critterStarted) {
+    critterStarted = true;
+    for (const [id, file] of Object.entries(CRITTER_FILES)) {
+      const img = new Image();
+      img.onload = () => {
+        critterCache[id] = img;
+      };
+      img.src = `/assets/animals/${file}`;
+    }
+  }
+  return critterCache;
+}
+
 /** Kích thước vẽ quái (px) theo loại. */
 export function monsterSize(defId: string): number {
   if (defId === "dragon") return 72;
   if (defId === "demon") return 44;
+  if (defId === "warden") return 36;
   if (defId === "bigslime") return 30;
   if (defId === "orc") return 34;
   if (defId === "skeleton") return 32;

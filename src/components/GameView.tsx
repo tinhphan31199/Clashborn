@@ -14,12 +14,13 @@ import { MAX_HOUSES } from "@/engine/data";
 import { finishedBuildings } from "@/engine/systems/construction";
 import { shortages } from "@/engine/systems/economy";
 import { overseerReport } from "@/engine/systems/overseer";
-import { postureOf } from "@/engine/systems/commander";
+import { postureOf, strategyOf } from "@/engine/systems/commander";
 import { surgeActive } from "@/engine/systems/monsterDirector";
 import { GamePhase, MapFocus } from "@/engine/types";
 import type { AppSettings, MatchConfig } from "@/menu/config";
 import { AI_INFO } from "@/menu/config";
 import PauseMenu from "./menu/PauseMenu";
+import { snapshotInspector, type InspectorSnap } from "./inspector";
 import dynamic from "next/dynamic";
 
 // Agent Anh Hùng chỉ chạy ở client (cần CopilotKitProvider + game đang chạy).
@@ -55,6 +56,8 @@ interface HudState {
   warnings: string[];
   overseer: string;
   posture: string;
+  strategy: string;
+  inspector: InspectorSnap | null;
   nodes: { name: string; income: number; owner: number }[];
 }
 
@@ -80,6 +83,18 @@ export default function GameView({
   const miniRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
   const uiRef = useRef<Interaction | null>(null);
+  /** Entity đang mở modal thông tin (1 id hoặc null). */
+  const inspectorIdRef = useRef<number | null>(null);
+  /** Đồng bộ modal theo selection sau mỗi cú bấm: chọn đúng 1 thì mở, còn lại đóng. */
+  const syncInspector = () => {
+    const ui = uiRef.current;
+    if (!ui) return;
+    inspectorIdRef.current = ui.selection.size === 1 ? [...ui.selection][0] : null;
+  };
+  const closeInspector = () => {
+    inspectorIdRef.current = null;
+    uiRef.current?.selection.clear();
+  };
   const mouseRef = useRef<{ x: number; y: number } | null>(null);
   const midDrag = useRef<{ x: number; y: number } | null>(null);
   /** Mốc chạm cuối — mobile bắn chuột GIẢ sau mỗi lần chạm, phải lờ đi
@@ -148,15 +163,21 @@ export default function GameView({
     const container = containerRef.current!;
     const ctx = canvas.getContext("2d")!;
     const mctx = mini.getContext("2d")!;
+    // Kích thước view cache sẵn — không gọi getBoundingClientRect mỗi frame
+    // (ép layout, giật trên mobile khi kéo map).
+    let viewW = container.clientWidth;
+    let viewH = container.clientHeight;
 
     const resize = () => {
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const w = container.clientWidth;
-      const h = container.clientHeight;
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
-      canvas.style.width = `${w}px`;
-      canvas.style.height = `${h}px`;
+      // Mobile (cảm ứng): DPR 1 cho nhẹ fill-rate; desktop giữ 2 cho nét.
+      const coarse = window.matchMedia("(pointer: coarse)").matches;
+      const dpr = Math.min(coarse ? 1 : 2, window.devicePixelRatio || 1);
+      viewW = container.clientWidth;
+      viewH = container.clientHeight;
+      canvas.width = viewW * dpr;
+      canvas.height = viewH * dpr;
+      canvas.style.width = `${viewW}px`;
+      canvas.style.height = `${viewH}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     resize();
@@ -165,6 +186,7 @@ export default function GameView({
     let raf = 0;
     let last = performance.now();
     let hudTimer = 0;
+    let miniTimer = 1;
 
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
@@ -173,17 +195,21 @@ export default function GameView({
 
       game.update(dt);
       ui.pruneSelection(game);
-      const rect = canvas.getBoundingClientRect();
-      ui.panTick(game, dt, mouseRef.current, rect.width, rect.height);
+      ui.panTick(game, dt, mouseRef.current, viewW, viewH);
 
-      renderGame(ctx, game, ui, rect.width, rect.height);
-      const ms = 176;
-      renderMinimap(mctx, game, ui, ms, rect.width, rect.height);
+      renderGame(ctx, game, ui, viewW, viewH);
+      // Minimap quét cả map (37k ô) — vẽ 2fps là đủ, khỏi ngốn mobile.
+      miniTimer += dt;
+      if (miniTimer > 0.5) {
+        miniTimer = 0;
+        const ms = 176;
+        renderMinimap(mctx, game, ui, ms, viewW, viewH);
+      }
 
       hudTimer += dt;
       if (hudTimer > 0.2) {
         hudTimer = 0;
-        setHud(collectHud(game, ui));
+        setHud(collectHud(game, ui, inspectorIdRef.current));
       }
     };
     raf = requestAnimationFrame(frame);
@@ -287,6 +313,7 @@ export default function GameView({
       const rect = canvasRef.current!.getBoundingClientRect();
       const { x, y } = toWorld(e.clientX, e.clientY);
       ui.leftUp(game, x, y, rect.width, rect.height);
+      syncInspector();
     }
   };
 
@@ -311,7 +338,10 @@ export default function GameView({
       const k = e.key.toLowerCase();
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
       if (k === "escape") {
-        if (showHelp) setShowHelp(false);
+        if (inspectorIdRef.current != null) {
+          // Đang mở modal vật thể → Esc đóng modal trước, chưa mở menu.
+          closeInspector();
+        } else if (showHelp) setShowHelp(false);
         else if (menuOpen) closeMenu();
         else {
           ui.cancelAll();
@@ -372,6 +402,7 @@ export default function GameView({
     const ui = uiRef.current!;
     const hit = ui.pickAt(game, x, y);
     ui.selection = new Set(hit ? [hit.id] : []);
+    syncInspector();
     buzz(10);
   };
 
@@ -722,6 +753,9 @@ export default function GameView({
           <div className="mt-1 rounded border border-zinc-800 bg-zinc-950/60 px-1.5 py-1 text-zinc-400" title="Tư lệnh mặt trận: thế trận hiện tại của squad ta">
             ⚔️ {postureLabel(hud?.posture)}
           </div>
+          <div className="mt-1 rounded border border-zinc-800 bg-zinc-950/60 px-1.5 py-1 text-zinc-400" title="Quân sư: tin tình báo mới nhất về địch">
+            🔍 {hud?.strategy ?? "…"}
+          </div>
           <div className="mt-1">
             <div className="mb-0.5 text-zinc-400">Cần gì? (kho cạn worker tự đi lấy)</div>
             <div className="flex gap-1">
@@ -834,6 +868,45 @@ export default function GameView({
           </div>
         </div>
 
+        {/* modal thông tin vật thể (bấm vào lính/nhà/quái trên map) */}
+        {hud?.inspector && (
+          <div className="absolute right-2 top-12 z-10 w-64 max-w-[calc(100vw-1rem)] rounded-xl border border-amber-300/40 bg-zinc-900/95 p-3 text-xs shadow-2xl">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <div className="truncate text-sm font-bold">
+                {hud.inspector.icon} {hud.inspector.title}
+              </div>
+              <button
+                className="rounded bg-zinc-700 px-2 py-0.5 text-zinc-300 hover:bg-zinc-600"
+                onClick={closeInspector}
+                title="Đóng (Esc)"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="mb-1.5 font-semibold" style={{ color: hud.inspector.color }}>
+              {hud.inspector.owner}
+            </div>
+            <div className="mb-2 h-2 overflow-hidden rounded bg-zinc-700">
+              <div
+                className="h-2 rounded bg-green-500"
+                style={{ width: `${Math.max(0, Math.min(100, (hud.inspector.hp / hud.inspector.maxHp) * 100))}%` }}
+              />
+            </div>
+            <div className="mb-0.5 text-zinc-400">
+              🩸 {Math.ceil(hud.inspector.hp)}/{hud.inspector.maxHp}
+            </div>
+            {hud.inspector.lines.map((l) => (
+              <div key={l.k} className="flex justify-between gap-2 py-px">
+                <span className="text-zinc-500">{l.k}</span>
+                <span className="text-right text-zinc-200">{l.v}</span>
+              </div>
+            ))}
+            {hud.inspector.desc !== "" && (
+              <div className="mt-1.5 border-t border-zinc-800 pt-1 text-zinc-400">{hud.inspector.desc}</div>
+            )}
+          </div>
+        )}
+
         {/* pause menu */}
         <PauseMenu
           paused={menuOpen}
@@ -928,7 +1001,7 @@ export default function GameView({
   );
 }
 
-function collectHud(game: Game, ui: Interaction): HudState {
+function collectHud(game: Game, ui: Interaction, inspectorId: number | null): HudState {
   const me = game.world.player(HUMAN);
   const hb = game.world.baseOf(HUMAN);
   const ab = game.world.baseOf(AI_PLAYER);
@@ -1004,7 +1077,9 @@ function collectHud(game: Game, ui: Interaction): HudState {
     needs: { ...me.needs },
     warnings: needs,
     overseer: overseerReport(game.world, HUMAN),
+    inspector: snapshotInspector(game, inspectorId),
     posture: postureOf(HUMAN),
+    strategy: strategyOf(HUMAN),
     nodes: game.world.nodes().map((n) => ({
       name: n.defId,
       income: 0,

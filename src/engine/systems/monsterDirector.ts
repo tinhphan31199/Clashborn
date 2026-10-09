@@ -146,11 +146,11 @@ function startSurge(world: World) {
     }
   }
   if (!target) return;
-  // Gom quái vòng ngoài/giữa (không động boss) gần mục tiêu nhất.
+  // Gom quái vòng ngoài/giữa (không động boss, không động quái giữ rừng).
   const pack = [...world.entities.values()]
         .filter((e) =>
           e.kind === "unit" && e.player === 7 &&
-          e.defId !== "dragon" && e.defId !== "demon" &&
+          e.defId !== "dragon" && e.defId !== "demon" && e.defId !== "warden" &&
           e.state !== "attacking" && !surging.has(e.id)
         )
         .sort((a, b) =>

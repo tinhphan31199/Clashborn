@@ -6,7 +6,7 @@
  * - supplyCap = 6 base + 7 mỗi nhà đã xong (max 20). Không nhà khỏi đẻ quân.
  */
 import { TileMap, makeRng } from "./TileMap";
-import { BASE_POP, BUILDING_DEFS, HOUSE_POP, TILE, UNIT_DEFS, isMonsterDef } from "./data";
+import { BASE_POP, BUILDING_DEFS, HOUSE_POP, TILE, UNIT_DEFS, isCritterDef, isMonsterDef } from "./data";
 import { greetNewborn } from "./systems/overseer";
 import { Effect, Entity, EntityId, EntityKind, PlayerId, PlayerState, Projectile, Vec2 } from "./types";
 
@@ -327,6 +327,9 @@ export class World {
       patrolToB: true,
       kills: 0,
       vetLevel: 0,
+      quest: null,
+      advLevel: 1,
+      advExp: 0,
       tx: 0,
       ty: 0,
       tw: 0,
@@ -343,6 +346,10 @@ export class World {
   }
 
   spawnUnit(defId: string, player: PlayerId, x: number, y: number): Entity {
+    // Worker mới sinh có 15% thành mạo hiểm giả (trừ quái/critters phe khác).
+    if (defId === "worker" && (player === 0 || player === 1) && this.rand() < 0.15) {
+      defId = "adventurer";
+    }
     const e = this.baseEntity("unit", defId, player, x, y);
     this.entities.set(e.id, e);
     // Worker mới sinh: nhận việc theo lệnh mới nhất của agent,
@@ -579,6 +586,8 @@ export class World {
       const isTank = t.kind === "unit" && t.defId === "tank";
       const isBase = t.kind === "building" && t.defId === "base";
       const isMonster = t.kind === "unit" && isMonsterDef(t.defId);
+      // Thú rừng: chỉ đánh khi không còn gì quan trọng hơn.
+      const isCritter = t.kind === "unit" && isCritterDef(t.defId);
       switch (attacker.defId) {
         case "soldier":
           // Soldier săn kinh tế: Worker > Archer > Soldier > Tank > Quái/Base > Node
@@ -587,6 +596,7 @@ export class World {
           if (isSoldier) return 2;
           if (isTank) return 3;
           if (isMonster || isBase) return 4;
+          if (isCritter) return 6;
           return 5;
         case "archer":
           // Archer bắn từ sau: Tank > Soldier > Worker > Quái/Base
@@ -595,10 +605,12 @@ export class World {
           if (isArcher) return 2;
           if (isWorker) return 3;
           if (isMonster || isBase) return 4;
+          if (isCritter) return 6;
           return 5;
         case "tank":
           // Tank càn gần nhất, khoét nhà tốt
           if (isBase) return 3;
+          if (isCritter) return 6;
           return 4;
         default:
           return 5;
@@ -637,7 +649,10 @@ export class World {
   /** Enemy trong tầm, đã xếp hạng ưu tiên theo loại lính. */
   priorityEnemy(attacker: Entity, rangePx: number): Entity | null {
     const cands = this.queryRadius(attacker.x, attacker.y, rangePx).filter(
-      (e) => e.player !== attacker.player && e.player >= 0 && (e.kind === "unit" || e.kind === "building")
+      (e) =>
+        e.player !== attacker.player &&
+        (e.player >= 0 || isCritterDef(e.defId)) &&
+        (e.kind === "unit" || e.kind === "building")
     );
     return this.pickTargetFor(attacker, cands);
   }

@@ -17,8 +17,12 @@ import { overseerTick } from "./systems/overseer";
 import { fogTick } from "./systems/fog";
 import { monsterTick } from "./systems/monster";
 import { directorTick } from "./systems/monsterDirector";
+import { critterTick } from "./systems/critter";
+import { adventureTick } from "./systems/adventure";
 import { movementTick } from "./systems/movement";
 import { Entity, GamePhase, PlayerId, PlayerState } from "./types";
+import { NEUTRAL } from "./types";
+import { T_WOOD } from "./TileMap";
 import { MAP_H, MAP_W, World } from "./World";
 import { UnitDef } from "./data";
 
@@ -96,24 +100,63 @@ export class Game {
     this.place("node_mid", -1, MAP_W - 68 - 2, MAP_H - 84 - 2);
     this.place("node_center", -1, cx - 1, cy - 1);
 
-    // Sân dirt quanh base + quanh các mỏ (chỉ lên ô cỏ trống).
-    w.map.paintPlaza(22, 18, 12, 12);
-    w.map.paintPlaza(74, 78, 12, 12);
-    w.map.paintPlaza(41, 41, 8, 8);
-    w.map.paintPlaza(55, 55, 8, 8);
-    w.map.paintPlaza(69, 85, 8, 8);
-    w.map.paintPlaza(27, 11, 8, 8);
-    w.map.paintPlaza(48, 48, 10, 10);
+    // Sân dirt quanh base + quanh các mỏ, đường dirt base→mỏ→trung tâm.
+    // Tọa độ SUY TỪ công trình đã đặt (không hardcode) để đổi map size vẫn đúng.
+    // Chỉ lên ô cỏ trống, đối xứng theo vị trí thực 2 phe.
+    const tileCenter = (e: { tx: number; ty: number; tw: number; th: number }) => ({
+      tx: Math.floor(e.tx + e.tw / 2),
+      ty: Math.floor(e.ty + e.th / 2),
+    });
+    const dist = (
+      a: { tx: number; ty: number },
+      b: { tx: number; ty: number }
+    ): number => Math.hypot(a.tx - b.tx, a.ty - b.ty);
+    for (const side of [HUMAN, AI_PLAYER] as const) {
+      const b = w.baseOf(side);
+      if (!b) continue;
+      const bc = tileCenter(b);
+      const near = w
+        .nodes()
+        .filter((n) => n.defId === "node_near")
+        .sort((p, q) => dist(tileCenter(p), bc) - dist(tileCenter(q), bc))[0];
+      const mid = w
+        .nodes()
+        .filter((n) => n.defId === "node_mid")
+        .sort((p, q) => dist(tileCenter(p), bc) - dist(tileCenter(q), bc))[0];
+      const center = w.nodes().find((n) => n.defId === "node_center");
+      w.map.paintPlaza(bc.tx, bc.ty, 12, 12);
+      if (near) {
+        const nc = tileCenter(near);
+        w.map.paintPlaza(nc.tx, nc.ty, 8, 8);
+        if (center) {
+          const cc = tileCenter(center);
+          w.map.paintRoad([bc, nc, cc]);
+        }
+      }
+      if (mid && center) {
+        const mc = tileCenter(mid);
+        w.map.paintPlaza(mc.tx, mc.ty, 8, 8);
+        w.map.paintRoad([mc, tileCenter(center)]);
+      }
+    }
+    {
+      const center = w.nodes().find((n) => n.defId === "node_center");
+      if (center) {
+        const cc = tileCenter(center);
+        w.map.paintPlaza(cc.tx, cc.ty, 10, 10);
+      }
+    }
 
-    // Đường dirt base→mỏ→trung tâm (chỉ lên ô cỏ trống, đối xứng 2 phe).
-    w.map.paintRoad([{ tx: 22, ty: 18 }, { tx: 41, ty: 41 }, { tx: 48, ty: 48 }]);
-    w.map.paintRoad([{ tx: 69, ty: 85 }, { tx: 48, ty: 48 }]);
-    w.map.paintRoad([{ tx: 74, ty: 78 }, { tx: 55, ty: 55 }, { tx: 48, ty: 48 }]);
-    w.map.paintRoad([{ tx: 27, ty: 11 }, { tx: 48, ty: 48 }]);
+    // Công hội mạo hiểm gần trung tâm (2 bên dùng chung).
+    w.map.clearArea(cx + 14, cy - 2, 5);
+    this.place("guild", -1, cx + 12, cy - 3);
 
     // Mở đầu mỗi bên 1 worker để nhìn là hiểu ngay.
     this.spawnStarter(HUMAN);
     this.spawnStarter(AI_PLAYER);
+
+    // Thú rừng trung lập rải rác (lợn/cừu/gà đi lang thang).
+    this.scatterCritters();
 
     w.recomputeSupply();
     w.rebuildSpatial();
@@ -135,6 +178,36 @@ export class Game {
       }
     }
     return e;
+  }
+
+  /** Rải thú rừng: đứng ở ô cỏ kề cụm cây (không đứng trong cây). */
+  private scatterCritters() {
+    const w = this.world;
+    const woods: number[] = [];
+    for (let i = 0; i < w.map.tiles.length; i++) {
+      if (w.map.tiles[i] === T_WOOD) woods.push(i);
+    }
+    const kinds = ["boar", "sheep", "chicken"];
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
+    let placed = 0;
+    for (let n = 0; n < 14 && placed < 14; n++) {
+      for (let t = 0; t < 12; t++) {
+        const i = woods[Math.floor(w.rand() * woods.length)];
+        const tx = i % w.map.w;
+        const ty = Math.floor(i / w.map.w);
+        const d = dirs[Math.floor(w.rand() * dirs.length)];
+        const sx = tx + d[0];
+        const sy = ty + d[1];
+        if (!w.map.inBounds(sx, sy) || !w.map.passable(sx, sy)) continue;
+      const kind = kinds[Math.floor(w.rand() * kinds.length)];
+      const u = w.spawnUnit(kind, NEUTRAL, w.map.tileToWorldCenter(sx), w.map.tileToWorldCenter(sy));
+      u.state = "idle";
+      u.patrolAx = sx; // nhà của nó (sợ quá chạy xa sẽ tự về)
+      u.patrolAy = sy;
+        placed++;
+        break;
+      }
+    }
   }
 
   private spawnStarter(player: PlayerId) {
@@ -258,7 +331,7 @@ export class Game {
     const w = this.world;
     w.time += dt;
     this.tickCount++;
-    resetPathBudget(); // mở quota A* mới cho tick này (chống giật trận đông)
+    resetPathBudget(12); // quota A*/tick: đủ cho combat + quest xa (đo không nặng hơn)
     w.rebuildSpatial();
     this.ai.update(w, (c) => this.dispatch(c), dt);
     overseerTick(w, (c) => this.dispatch(c)); // agent ra lệnh trước, systems thi hành sau
@@ -268,8 +341,10 @@ export class Game {
     autoTick(w, dt);
     movementTick(w, dt);
     combatTick(w, dt);
-    monsterTick(w);
+    monsterTick(w, dt);
     directorTick(w, dt);
+    critterTick(w);
+    adventureTick(w, dt);
     economyTick(w, dt);
     fogTick(w);
     for (let i = w.effects.length - 1; i >= 0; i--) {

@@ -5,11 +5,12 @@
  * - Archer bắn tên (projectile), còn lại hitscan. Tank splash nhẹ.
  * - Veterancy giữ lại: 4 kills ★ (+15%), 8 kills ★★ (+30% + hồi máu).
  */
-import { BUILDING_DEFS, isMonsterDef, MONSTER, TILE, UNIT_DEFS } from "../data";
+import { BUILDING_DEFS, isCritterDef, isMonsterDef, MONSTER, TILE, UNIT_DEFS } from "../data";
 import { findPath } from "../astar";
-import { Entity } from "../types";
+import { Entity, NEUTRAL } from "../types";
 import { World } from "../World";
-import { isParched } from "./economy";
+import { FOOD_CAP, isParched, SHORTAGE_FOOD } from "./economy";
+import { logAdventureKill } from "./adventure";
 
 export function combatTick(world: World, dt: number) {
   updateProjectiles(world, dt);
@@ -20,6 +21,11 @@ export function combatTick(world: World, dt: number) {
     const def = UNIT_DEFS[u.defId];
     if (!def) continue;
     if (u.attackCooldown > 0) u.attackCooldown -= dt;
+    // Nông dân chỉ đánh thú rừng khi phe đói thịt (quân địch thì vẫn bỏ chạy).
+    if (u.defId === "worker") {
+      workerHuntTick(world, u, dt);
+      continue;
+    }
     if (def.range <= 0) continue;
 
     const vetMul = u.vetLevel === 2 ? 1.3 : u.vetLevel === 1 ? 1.15 : 1;
@@ -55,13 +61,79 @@ export function combatTick(world: World, dt: number) {
       }
     } else {
       // Rảnh → nhặt mục tiêu theo ưu tiên. Đứng yên cũng tự vệ trong range.
+      // Mạo hiểm giả đang rút về hội thì không ham đánh nữa.
+      const resting = u.defId === "adventurer" && u.quest?.phase === "rest";
       const scan = u.state === "idle" && u.path.length === 0 ? Math.max(rangePx, sightPx * 0.5) : sightPx;
-      const enemy = world.priorityEnemy(u, scan);
+      const enemy = resting ? null : world.priorityEnemy(u, scan);
       if (enemy) {
         u.targetId = enemy.id;
         u.state = "attacking";
         u.path.length = 0;
       }
+    }
+  }
+}
+
+/** Nông dân săn thú rừng: chỉ khi phe đói, chỉ con gần, xa quá thì thôi. */
+const HUNT_DMG = 5;
+const HUNT_RANGE_PX = 1.2 * 32;
+const HUNT_SIGHT_PX = 3 * 32;
+const HUNT_LEASH_PX = 6 * 32;
+
+function workerHuntTick(world: World, u: Entity, dt: number) {
+  // Thợ đang xây móng (repairing + ngắm site) thì kệ — cấm động vào
+  // target của agent xây dựng, không thì móng đói thợ, thợ kẹt cứng.
+  if (u.state === "repairing") return;
+  const pl = world.players.find((p) => p.id === u.player);
+  let target = world.get(u.targetId);
+  if (target && (target.hp <= 0 || !isCritterDef(target.defId))) {
+    target = undefined;
+    u.targetId = null;
+  }
+  // Hết đói hoặc mất mục tiêu → thôi săn, về việc cũ.
+  if (!pl || (pl.food ?? 0) >= SHORTAGE_FOOD) {
+    if (u.state === "attacking" && target) {
+      u.state = "idle";
+      u.targetId = null;
+      u.path = [];
+    }
+    return;
+  }
+  if (!target) {
+    let bestD = HUNT_SIGHT_PX * HUNT_SIGHT_PX;
+    for (const e of world.queryRadius(u.x, u.y, HUNT_SIGHT_PX)) {
+      if (e.kind !== "unit" || !isCritterDef(e.defId)) continue;
+      const d = (e.x - u.x) ** 2 + (e.y - u.y) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        target = e;
+      }
+    }
+    if (target) {
+      u.targetId = target.id;
+      u.state = "attacking";
+    } else {
+      if (u.state === "attacking") u.state = "idle";
+      return;
+    }
+  }
+  const d = Math.hypot(target.x - u.x, target.y - u.y);
+  if (d <= HUNT_RANGE_PX) {
+    u.path.length = 0;
+    if (u.attackCooldown <= 0) {
+      u.attackCooldown = 1.0;
+      damageEntity(world, target, HUNT_DMG, u);
+    }
+  } else if (d > HUNT_LEASH_PX) {
+    u.state = "idle"; // xa quá thì bỏ, về làm việc
+    u.targetId = null;
+    u.path = [];
+  } else {
+    u.repathTimer -= dt;
+    if (u.path.length === 0 || u.repathTimer <= 0) {
+      const p = findPath(world.map, u.x, u.y, target.x, target.y);
+      if (p) u.path = p;
+      u.repathTimer = 0.5;
     }
   }
 }
@@ -187,6 +259,10 @@ export function damageEntity(world: World, target: Entity, amount: number, attac
     const bonus = UNIT_DEFS[attacker.defId]?.bonusVsBuilding ?? 0;
     final = final * (1 + bonus);
   }
+  // Mạo hiểm giả khắc quái dungeon (+50% sát thương).
+  if (attacker && attacker.defId === "adventurer" && target.player === MONSTER) {
+    final = final * 1.5;
+  }
   final = Math.max(1, Math.round(final));
   target.hp -= final;
 
@@ -200,6 +276,8 @@ export function damageEntity(world: World, target: Entity, amount: number, attac
     });
     if (attacker && attacker.kind === "unit") {
       attacker.kills++;
+      // Mạo hiểm giả ghi mạng vào nhiệm vụ.
+      if (attacker.defId === "adventurer") logAdventureKill(attacker, target.defId);
       const next = attacker.kills >= 8 ? 2 : attacker.kills >= 4 ? 1 : 0;
       if (next > attacker.vetLevel) {
         attacker.vetLevel = next;
@@ -209,15 +287,23 @@ export function damageEntity(world: World, target: Entity, amount: number, attac
           ttl: 0.5, maxTtl: 0.5, color: "#fff06a",
         });
       }
-      // Tiền thưởng hạ quái dungeon.
+      // Tiền thưởng hạ quái dungeon (vàng) / thú rừng (thịt).
       const bounty = UNIT_DEFS[target.defId]?.bounty ?? 0;
-      if (bounty > 0 && target.player === MONSTER && (attacker.player === 0 || attacker.player === 1)) {
+      if (bounty > 0 && (attacker.player === 0 || attacker.player === 1)) {
         const pl = world.players.find((p) => p.id === attacker.player);
-        if (pl) pl.ore += bounty;
-        world.addEffect({
-          kind: "spark", x1: target.x, y1: target.y, x2: target.x, y2: target.y,
-          ttl: 0.6, maxTtl: 0.6, color: "#ffd34d",
-        });
+        if (target.player === MONSTER && pl) {
+          pl.ore += bounty;
+          world.addEffect({
+            kind: "spark", x1: target.x, y1: target.y, x2: target.x, y2: target.y,
+            ttl: 0.6, maxTtl: 0.6, color: "#ffd34d",
+          });
+        } else if (target.player === NEUTRAL && isCritterDef(target.defId) && pl) {
+          pl.food = Math.min(FOOD_CAP, pl.food + bounty);
+          world.addEffect({
+            kind: "spark", x1: target.x, y1: target.y, x2: target.x, y2: target.y,
+            ttl: 0.6, maxTtl: 0.6, color: "#fb923c",
+          });
+        }
       }
     }
     world.removeEntity(target.id);

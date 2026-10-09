@@ -121,8 +121,19 @@ export function movementTick(world: World, dt: number) {
         // Bỏ đẩy ngang, chỉ đi theo đường path.
         u.x += nx * step;
         u.y += ny * step;
+      } else {
+        // Trượt tường: tách bước theo trục (trục chính trước) để khỏi kẹt góc
+        // khi path làm mượt cắt chéo qua mép vật cản.
+        const xOk = world.map.passable(world.map.worldToTile(u.x + nx * step), world.map.worldToTile(u.y));
+        const yOk = world.map.passable(world.map.worldToTile(u.x), world.map.worldToTile(u.y + ny * step));
+        if (Math.abs(nx) >= Math.abs(ny)) {
+          if (xOk) u.x += nx * step;
+          else if (yOk) u.y += ny * step;
+        } else {
+          if (yOk) u.y += ny * step;
+          else if (xOk) u.x += nx * step;
+        }
       }
-      // else: kẹt cứng giữa đám đông/vật cản → đứng yên, tick sau đường thoáng đi tiếp.
       u.facing = Math.atan2(ny, nx);
     }
   }

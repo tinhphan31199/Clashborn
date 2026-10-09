@@ -4,9 +4,10 @@
  */
 import { BUILDING_DEFS, MONSTER, TILE, UNIT_DEFS } from "./data";
 import { APPLE_CAP, RICE_RIPE_AT, T_APPLE, T_FIELD, T_GRASS, T_ORE, T_ROAD, T_STONE, T_STUMP, T_WATER, T_WOOD } from "./TileMap";
-import { fieldArt, miniArt, miniReady, monsterArt, monsterSize, unitFrames } from "./assets";
+import { fieldArt, miniArt, miniReady, monsterArt, monsterSize, critterArt, unitFrames } from "./assets";
 import { dungeonZones } from "./World";
 import { Game, HUMAN } from "./Game";
+import { NEUTRAL } from "./types";
 import { Interaction } from "./input";
 import { isExplored } from "./systems/fog";
 import { Entity } from "./types";
@@ -30,6 +31,7 @@ const UNIT_ICON: Record<string, string> = {
   soldier: "⚔️",
   archer: "🏹",
   tank: "🛡️",
+  adventurer: "🧝",
 };
 
 export function renderGame(
@@ -422,7 +424,22 @@ function drawUnit(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
   const def = UNIT_DEFS[e.defId];
   const r = def?.radius ?? 9;
   // Quái dungeon: sprite MiniWorld + nhún theo nhịp (tím = nguy hiểm).
-  if (e.player === MONSTER) {
+  // Thú rừng trung lập: sprite nhỏ, không vòng (hiền lành).
+  if (e.player === NEUTRAL) {
+    const sprite = critterArt()[e.defId];
+    if (sprite) {
+      const bob = Math.sin(game.world.time * 4 + e.id) * 1.5;
+      ctx.drawImage(sprite, e.x - 12, e.y - 12 + bob, 24, 24);
+    } else {
+      ctx.fillStyle = "#d6cfae";
+      ctx.font = "14px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(def?.icon ?? "•", e.x, e.y + 1);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+    }
+  } else if (e.player === MONSTER) {
     const sprite = monsterArt()[e.defId];
     const S = monsterSize(e.defId);
     ctx.fillStyle = "rgba(88,28,135,0.85)";
@@ -442,8 +459,9 @@ function drawUnit(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
       ctx.textBaseline = "alphabetic";
     }
   } else {
-  // Lính phe ta: sprite PixelLab đi bộ (đi mới chạy frames, đứng yên pose 0).
-  const frames = e.player === HUMAN ? unitFrames(e.defId) : [];
+  // Lính 2 phe dùng chung image đúng loại (đi mới chạy frames, đứng yên pose 0).
+  // Địch nhận diện bằng viền đỏ (vẽ sau cùng).
+  const frames = unitFrames(e.defId);
   const ready = frames.length === 8 && frames.every((f) => f);
   if (ready) {
     const moving =
@@ -467,6 +485,13 @@ function drawUnit(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
     ctx.fillText(UNIT_ICON[e.defId] ?? "•", e.x, e.y + 1);
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
+  }
+  if (e.player !== HUMAN && e.player >= 0) {
+    ctx.strokeStyle = "#ef4444";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, r + 6, 0, Math.PI * 2);
+    ctx.stroke();
   }
   }
   // worker đang gánh thì vẽ bao trên lưng
@@ -537,6 +562,19 @@ function drawNodeOrBase(ctx: CanvasRenderingContext2D, game: Game, e: Entity) {
   } else if (isBase && art.base) {
     // thành chính bằng sprite (vừa khít ô 4x4)
     ctx.drawImage(art.base, px, py, wpx, hpx);
+  } else if (e.defId === "guild") {
+    // Công hội mạo hiểm: sprite nhà hội 3x3 + cờ hiệu.
+    if (art.guild) ctx.drawImage(art.guild, px, py, wpx, hpx);
+    else {
+      ctx.fillStyle = "#57534e";
+      ctx.fillRect(px, py, wpx, hpx);
+      ctx.fillStyle = "#fef3c7";
+      ctx.font = "28px sans-serif";
+      ctx.fillText("⚔️", px + wpx / 2, py + hpx / 2 + 10);
+    }
+    ctx.fillStyle = "#fcd34d";
+    ctx.font = "bold 11px sans-serif";
+    ctx.fillText("GUILD", px + wpx / 2, py - 6);
   } else if (e.defId === "house") {
     if (houseSprite && !e.underConstruction) ctx.drawImage(houseSprite, px, py, wpx, hpx);
     else if (art.house && !e.underConstruction) ctx.drawImage(art.house, px, py, wpx, hpx);

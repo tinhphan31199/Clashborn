@@ -200,6 +200,32 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     radius: 14,
     description: "Khiên thịt đi đầu. Tốn gỗ + đá.",
   },
+  // --- Mạo hiểm giả (15% khi spawn worker, không mua được) ---
+  adventurer: {
+    id: "adventurer",
+    name: "Adventurer",
+    icon: "🧝",
+    hp: 150,
+    speed: 2.6,
+    sight: 7,
+    range: 1.2,
+    damage: 10,
+    cooldown: 1.1,
+    cost: 0,
+    wood: 0,
+    stone: 0,
+    food: 0,
+    supply: 1,
+    armor: 0,
+    bonusVsBuilding: 0,
+    projectileSpeed: 0,
+    splash: 0,
+    canGather: false,
+    waterUse: 0.1,
+    bounty: 0,
+    radius: 8,
+    description: "Nhận nhiệm vụ ở công hội, săn quái lên cấp.",
+  },
   // --- Quái dungeon (phe MONSTER, không spawn bằng lệnh thường) ---
   slime: monsterDef("slime", "Slime", "🟢", 60, 6, 15, { speed: 1.6, radius: 8 }),
   slimeblue: monsterDef("slimeblue", "Blue Slime", "🔵", 95, 9, 22, { speed: 1.6, radius: 8 }),
@@ -207,10 +233,14 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
   orc: monsterDef("orc", "Orc", "👺", 180, 17, 42, { speed: 1.9 }),
   skeleton: monsterDef("skeleton", "Skeleton", "💀", 130, 21, 48, { speed: 1.8, radius: 8 }),
   demon: monsterDef("demon", "Demon", "😈", 420, 28, 110, { speed: 1.6, radius: 12 }),
+  warden: monsterDef("warden", "Quái tinh anh", "👹", 380, 26, 85, {
+    speed: 1.7, sight: 6, radius: 11,
+    description: "Quái tinh anh giữ rừng. Lại gần trung tâm rừng là bị đánh — hạ được +85 vàng!",
+  }),
   // --- Thú rừng trung lập (không ai đánh, chỉ đi lang thang) ---
-  boar: monsterDef("boar", "Boar", "🐗", 30, 0, 0, { speed: 1.5, radius: 7 }),
-  sheep: monsterDef("sheep", "Sheep", "🐑", 20, 0, 0, { speed: 1.2, radius: 7 }),
-  chicken: monsterDef("chicken", "Chicken", "🐔", 15, 0, 0, { speed: 1.8, radius: 6 }),
+  boar: monsterDef("boar", "Boar", "🐗", 30, 0, 20, { speed: 1.5, radius: 7 }),
+  sheep: monsterDef("sheep", "Sheep", "🐑", 20, 0, 15, { speed: 1.2, radius: 7 }),
+  chicken: monsterDef("chicken", "Chicken", "🐔", 15, 0, 10, { speed: 1.8, radius: 6 }),
   dragon: monsterDef("dragon", "Dragon", "🐉", 1300, 48, 260, {
     speed: 1.4, sight: 7, range: 2, splash: 30, radius: 16,
     description: "Trùm dungeon. Hạ được +260 vàng!",
@@ -224,7 +254,7 @@ export const SPAWN_ORDER = ["worker", "soldier", "archer", "tank"] as const;
 export const MONSTER = 7;
 
 /** Quái dungeon theo cấp độ khó tăng dần (vòng ngoài → lõi). */
-export const MONSTER_ORDER = ["slime", "slimeblue", "bigslime", "orc", "skeleton", "demon", "dragon"] as const;
+export const MONSTER_ORDER = ["slime", "slimeblue", "bigslime", "orc", "skeleton", "demon", "dragon", "warden"] as const;
 
 /** Thú rừng trung lập đi lang thang (không thuộc phe nào, không ai đánh). */
 export const CRITTER_ORDER = ["boar", "sheep", "chicken"] as const;
@@ -355,6 +385,23 @@ export const BUILDING_DEFS: Record<string, BuildingDef> = {
     water: 0,
     captureRadius: 0,
     description: "KHO CHÍNH (cần có nhà mới xây): có farm thì mọi tài nguyên chỉ nộp vào farm. Nộp tại farm +25%, tưới ruộng quanh farm +50%/gáo.",
+  },
+  guild: {
+    id: "guild",
+    name: "Công hội Mạo hiểm",
+    icon: "⚔️",
+    hp: 800,
+    w: 3,
+    h: 3,
+    cost: 0,
+    wood: 0,
+    stone: 0,
+    armor: 2,
+    sight: 6,
+    income: 0,
+    water: 0,
+    captureRadius: 0,
+    description: "Mạo hiểm giả nhận/trả nhiệm vụ ở đây. Trung lập, không ai đánh.",
   },
   tower: {
     id: "tower",

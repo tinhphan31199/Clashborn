@@ -120,14 +120,28 @@ function driveSite(world: World, site: Entity, dt: number) {
 
   // Địch tới gần thợ nào thì thợ đó bỏ chạy, còn lại xây tiếp.
   // Agent cử bù khi an toàn.
-  const half = (Math.max(site.tw, site.th) * TILE) / 2;
+  const hw = (site.tw * TILE) / 2;
+  const hh = (site.th * TILE) / 2;
   let arrived = 0;
   for (const b of builders) {
     if (world.nearestEnemy(b.x, b.y, b.player, 4 * TILE)) {
       issueOrder(world, b, { kind: "release" });
       continue;
     }
-    if (Math.hypot(site.x - b.x, site.y - b.y) <= half + 1.2 * TILE) arrived++;
+    // Tới nơi = đứng sát mép móng (tính từ mép, không tính từ tâm —
+    // móng 3x3 đứng góc chéo vẫn tới). Chưa tới mà hết đường thì đi lại
+    // (có cooldown kẻo spam A* mỗi tick khi chỗ đứng không tới được).
+    const dx = Math.max(Math.abs(b.x - site.x) - hw, 0);
+    const dy = Math.max(Math.abs(b.y - site.y) - hh, 0);
+    if (Math.hypot(dx, dy) > 1.2 * TILE) {
+      b.repathTimer -= dt;
+      if (b.path.length === 0 && b.repathTimer <= 0) {
+        b.repathTimer = 2;
+        issueOrder(world, b, { kind: "build", siteId: site.id });
+      }
+      continue;
+    }
+    arrived++;
   }
   if (arrived === 0) return; // thợ đang đi tới / vừa bỏ chạy hết
   // Càng đông thợ càng nhanh (diminishing): 1 thợ 15s · 2 thợ ~9s · 3 thợ ~7s.

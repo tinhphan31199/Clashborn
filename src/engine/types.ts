@@ -85,6 +85,10 @@ export interface Entity {
   // veterancy
   kills: number;
   vetLevel: number; // 0..2
+  // --- adventurer fields (mạo hiểm giả, null = không phải) ---
+  quest: AdventureQuest | null;
+  advLevel: number; // cấp mạo hiểm (rank F→SS)
+  advExp: number;
 
   // --- building fields ---
   /** tile footprint */
@@ -101,6 +105,17 @@ export interface Entity {
 
   // --- resource fields (ore fields) ---
   amount: number;
+}
+
+/** Nhiệm vụ mạo hiểm giả (rank F→SS theo level). */
+export interface AdventureQuest {
+  rank: string;
+  needTier: number;
+  needCount: number;
+  log: string[]; // defId quái đã hạ trong nhiệm vụ
+  rewardGold: number;
+  rewardExp: number;
+  phase: "toGuild" | "hunt" | "return" | "rest";
 }
 
 /** Transient visual effects (tracers, explosions). Not gameplay state. */
